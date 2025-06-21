@@ -23,14 +23,18 @@ if not os.path.exists('media'):
 def create_connection():
     """Create a database connection."""
     try:
-        return sqlite3.connect("app.db")
+        conn = sqlite3.connect("app.db", check_same_thread=False)
+        return conn
     except sqlite3.Error as e:
         logger.error(f"Błąd połączenia z bazą danych: {e}")
         st.error(f"Błąd połączenia z bazą danych: {e}")
+        return None
 
 def initialize_db():
     """Initialize the database and create necessary tables."""
     conn = create_connection()
+    if conn is None:
+        return
     try:
         with conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -100,6 +104,8 @@ def register_user():
                     st.success("Rejestracja powiodła się!")
             except sqlite3.IntegrityError:
                 st.error("Ten użytkownik już istnieje.")
+            except sqlite3.Error as e:
+                st.error(f"Błąd dostępu do bazy danych: {e}")
         else:
             st.warning("Wszystkie pola muszą być wypełnione.")
 
@@ -110,16 +116,24 @@ def login_user():
     password = st.text_input("Password", type="password")
     if st.button("Zaloguj się"):
         if username and password:
-            with create_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
-                user = cursor.fetchone()
-                if user and check_password(user[0], password):
-                    st.session_state['logged_in'] = True
-                    st.session_state['username'] = username
-                    st.success(f"Witaj, {username}!")
-                else:
-                    st.error("Błędna nazwa użytkownika lub hasło.")
+            conn = create_connection()
+            if conn is None:
+                return
+            try:
+                with conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+                    user = cursor.fetchone()
+                    if user and check_password(user[0], password):
+                        st.session_state['logged_in'] = True
+                        st.session_state['username'] = username
+                        st.success(f"Witaj, {username}!")
+                    else:
+                        st.error("Błędna nazwa użytkownika lub hasło.")
+            except sqlite3.Error as e:
+                st.error(f"Błąd dostępu do bazy danych: {e}")
+            finally:
+                conn.close()
         else:
             st.warning("Wszystkie pola muszą być wypełnione.")
 
@@ -137,11 +151,19 @@ def set_user_customizations():
     theme = st.selectbox("Motyw", ['light', 'dark'])
 
     if st.button("Zapisz ustawienia"):
-        with create_connection() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO user_customizations (username, background_color, font_size, font_family, theme) VALUES (?, ?, ?, ?, ?)",
-                (st.session_state['username'], background_color, font_size, font_family, theme))
-        st.success("Zmiany zapisane!")
+        conn = create_connection()
+        if conn is None:
+            return
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO user_customizations (username, background_color, font_size, font_family, theme) VALUES (?, ?, ?, ?, ?)",
+                    (st.session_state['username'], background_color, font_size, font_family, theme))
+            st.success("Zmiany zapisane!")
+        except sqlite3.Error as e:
+            st.error(f"Błąd dostępu do bazy danych: {e}")
+        finally:
+            conn.close()
 
 def apply_customizations():
     """Apply user customizations to the interface."""
@@ -150,8 +172,11 @@ def apply_customizations():
         st.error("Błąd: Brak nazwy użytkownika w stanie sesji")
         return
 
+    conn = create_connection()
+    if conn is None:
+        return
     try:
-        with create_connection() as conn:
+        with conn:
             cursor = conn.cursor()
             cursor.execute("SELECT background_color, font_size, font_family, theme FROM user_customizations WHERE username = ?", (username,))
             customizations = cursor.fetchone()
@@ -172,41 +197,67 @@ def apply_customizations():
     except sqlite3.Error as e:
         st.error(f"Błąd dostępu do bazy danych: {e}")
         logger.error(f"Database access error: {e}")
+    finally:
+        conn.close()
 
 def admin_dashboard():
     """Admin panel to manage users and clubs."""
     st.subheader("Panel Administracyjny")
     analytics_choice = st.radio("Wybierz typ analizy", ("Aktywność użytkowników", "Statystyki klubów"))
 
-    with create_connection() as conn:
-        if analytics_choice == "Aktywność użytkowników":
-            user_activity = pd.read_sql_query("SELECT username, COUNT(*) as post_count FROM forum_posts GROUP BY username", conn)
-            st.bar_chart(user_activity, x='username', y='post_count', use_container_width=True)
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
+        with conn:
+            if analytics_choice == "Aktywność użytkowników":
+                user_activity = pd.read_sql_query("SELECT username, COUNT(*) as post_count FROM forum_posts GROUP BY username", conn)
+                st.bar_chart(user_activity, x='username', y='post_count', use_container_width=True)
 
-        elif analytics_choice == "Statystyki klubów":
-            club_stats = pd.read_sql_query("SELECT name, members_count FROM clubs", conn)
-            st.bar_chart(club_stats, x='name', y='members_count', use_container_width=True)
+            elif analytics_choice == "Statystyki klubów":
+                club_stats = pd.read_sql_query("SELECT name, members_count FROM clubs", conn)
+                st.bar_chart(club_stats, x='name', y='members_count', use_container_width=True)
 
-        users = pd.read_sql_query("SELECT * FROM users", conn)
-        clubs = pd.read_sql_query("SELECT * FROM clubs", conn)
+            users = pd.read_sql_query("SELECT * FROM users", conn)
+            clubs = pd.read_sql_query("SELECT * FROM clubs", conn)
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
     st.write("Lista użytkowników:")
     st.table(users)
 
     user_to_delete = st.selectbox("Wybierz użytkownika do usunięcia", users['username'])
     if st.button("Usuń wybranego użytkownika"):
-        with create_connection() as conn:
-            conn.execute("DELETE FROM users WHERE username = ?", (user_to_delete,))
-            st.success(f"Użytkownik {user_to_delete} został usunięty!")
+        conn = create_connection()
+        if conn is None:
+            return
+        try:
+            with conn:
+                conn.execute("DELETE FROM users WHERE username = ?", (user_to_delete,))
+                st.success(f"Użytkownik {user_to_delete} został usunięty!")
+        except sqlite3.Error as e:
+            st.error(f"Błąd usuwania użytkownika: {e}")
+        finally:
+            conn.close()
 
     st.write("Lista klubów:")
     st.table(clubs)
 
     club_to_delete = st.selectbox("Wybierz klub do usunięcia", clubs['name'])
     if st.button("Usuń wybrany klub"):
-        with create_connection() as conn:
-            conn.execute("DELETE FROM clubs WHERE name = ?", (club_to_delete,))
-            st.success(f"Klub {club_to_delete} został usunięty!")
+        conn = create_connection()
+        if conn is None:
+            return
+        try:
+            with conn:
+                conn.execute("DELETE FROM clubs WHERE name = ?", (club_to_delete,))
+                st.success(f"Klub {club_to_delete} został usunięty!")
+        except sqlite3.Error as e:
+            st.error(f"Błąd usuwania klubu: {e}")
+        finally:
+            conn.close()
 
 def create_club():
     """Create a new club."""
@@ -215,16 +266,27 @@ def create_club():
     city = st.text_input("Miasto")
     description = st.text_area("Opis")
     if st.button("Utwórz klub"):
-        with create_connection() as conn:
+        conn = create_connection()
+        if conn is None:
+            return
+        try:
             lat, lon = geocode_city(city)
-            conn.execute("INSERT INTO clubs (name, city, description, members_count, latitude, longitude) VALUES (?, ?, ?, 0, ?, ?)", (club_name, city, description, lat, lon))
+            with conn:
+                conn.execute("INSERT INTO clubs (name, city, description, members_count, latitude, longitude) VALUES (?, ?, ?, 0, ?, ?)", (club_name, city, description, lat, lon))
             st.success(f"Klub {club_name} utworzony!")
+        except sqlite3.Error as e:
+            st.error(f"Błąd tworzenia klubu: {e}")
+        finally:
+            conn.close()
 
 def view_clubs():
     """View and manage club information."""
     st.subheader("Lista klubów")
     search_term = st.text_input("Wyszukaj kluby (według nazwy lub miasta)")
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
         df = pd.read_sql_query("SELECT * FROM clubs", conn)
         if search_term:
             df = df[df['name'].str.contains(search_term, case=False) | df['city'].str.contains(search_term, case=False)]
@@ -252,42 +314,72 @@ def view_clubs():
                 review_text = st.text_area("Twoja recenzja", key=f"review_text_{index}")
                 if st.button("Dodaj recenzję", key=f"review_{index}"):
                     add_review(row['id'], rating, review_text)
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
 def calculate_average_rating(club_id):
     """Calculate the average rating for a club."""
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return "Brak ocen"
+    try:
         cursor = conn.cursor()
         cursor.execute("SELECT AVG(rating) FROM reviews WHERE club_id = ?", (club_id,))
         return cursor.fetchone()[0] or "Brak ocen"
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+        return "Brak ocen"
+    finally:
+        conn.close()
 
 def join_club(club_id):
     """Join a selected club."""
     username = st.session_state.get('username')
+    conn = create_connection()
+    if conn is None:
+        return
     try:
-        with create_connection() as conn:
+        with conn:
             conn.execute("INSERT INTO members (username, club_id) VALUES (?, ?)", (username, club_id))
             conn.execute("UPDATE clubs SET members_count = members_count + 1 WHERE id = ?", (club_id,))
             st.success("Dołączyłeś do klubu!")
     except sqlite3.Error as e:
         st.error(f"Błąd podczas dołączania do klubu: {e}")
+    finally:
+        conn.close()
 
 def get_club_reviews(club_id):
     """Get all reviews for a club."""
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return []
+    try:
         cursor = conn.cursor()
         cursor.execute("SELECT username, rating, review FROM reviews WHERE club_id = ?", (club_id,))
         reviews = cursor.fetchall()
         return [{'username': row[0], 'rating': row[1], 'review': row[2]} for row in reviews]
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+        return []
+    finally:
+        conn.close()
 
 def add_review(club_id, rating, review_text):
     """Add a review for a club."""
     username = st.session_state.get('username')
+    conn = create_connection()
+    if conn is None:
+        return
     try:
-        with create_connection() as conn:
+        with conn:
             conn.execute("INSERT INTO reviews (username, club_id, rating, review) VALUES (?, ?, ?, ?)", (username, club_id, rating, review_text))
         st.success("Recenzja dodana!")
     except sqlite3.Error as e:
         st.error(f"Błąd podczas dodawania recenzji: {e}")
+    finally:
+        conn.close()
 
 def manage_gallery(club_id):
     """Manage club's media gallery."""
@@ -299,30 +391,45 @@ def manage_gallery(club_id):
         with open(file_path, "wb") as f:
             f.write(uploaded_file.read())
 
+        conn = create_connection()
+        if conn is None:
+            return
         try:
-            with create_connection() as conn:
+            with conn:
                 conn.execute("INSERT INTO media_gallery (club_id, media_type, media_path, uploaded_by) VALUES (?, ?, ?, ?)",
                              (club_id, media_type, file_path, st.session_state['username']))
             st.success("Plik dodany do galerii!")
         except sqlite3.Error as e:
             st.error(f"Błąd podczas dodawania pliku do galerii: {e}")
+        finally:
+            conn.close()
 
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
         media_files = pd.read_sql_query(
             "SELECT media_type, media_path FROM media_gallery WHERE club_id = ?", 
             conn,
             params=(club_id,))
-    if not media_files.empty:
-        for file in media_files.itertuples():
-            if file.media_type == 'image':
-                st.image(file.media_path)
-            elif file.media_type == 'video':
-                st.video(file.media_path)
+        if not media_files.empty:
+            for file in media_files.itertuples():
+                if file.media_type == 'image':
+                    st.image(file.media_path)
+                elif file.media_type == 'video':
+                    st.video(file.media_path)
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
 def show_messages():
     """Display private messages for the user."""
     st.subheader("Wiadomości prywatne")
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
         username = st.session_state['username']
         messages = pd.read_sql_query(
             "SELECT sender, content, timestamp FROM private_messages WHERE receiver = ? ORDER BY timestamp DESC",
@@ -333,6 +440,10 @@ def show_messages():
             for message in messages.itertuples():
                 st.markdown(f"Od: {message.sender} - {message.timestamp}")
                 st.write(message.content)
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
 def send_message():
     """Send a private message to another user."""
@@ -342,19 +453,27 @@ def send_message():
     if st.button("Wyślij"):
         if receiver and content:
             sender = st.session_state['username']
+            conn = create_connection()
+            if conn is None:
+                return
             try:
-                with create_connection() as conn:
+                with conn:
                     conn.execute("INSERT INTO private_messages (sender, receiver, content) VALUES (?, ?, ?)", (sender, receiver, content))
                 st.success("Wiadomość wysłana!")
             except sqlite3.Error as e:
                 st.error(f"Błąd podczas wysyłania wiadomości: {e}")
+            finally:
+                conn.close()
         else:
             st.warning("Oba pola muszą być wypełnione!")
 
 def show_notifications():
     """Display notifications for the user."""
     st.subheader("Powiadomienia")
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
         username = st.session_state['username']
         notifications = pd.read_sql_query(
             "SELECT message, timestamp FROM notifications WHERE username = ? AND read = 0", conn, params=(username,))
@@ -364,11 +483,18 @@ def show_notifications():
         else:
             for notification in notifications.itertuples():
                 st.write(f"{notification.timestamp} - {notification.message}")
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
 def manage_events():
     """Manage club events."""
     st.subheader("Wydarzenia klubowe")
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
         clubs = pd.read_sql_query("SELECT * FROM clubs", conn)
         club_names = clubs['name'].unique()
         selected_club = st.selectbox("Wybierz klub", club_names)
@@ -380,18 +506,25 @@ def manage_events():
             if st.button("Dodaj wydarzenie"):
                 club_id = clubs.loc[clubs['name'] == selected_club, 'id'].iloc[0]
                 try:
-                    with create_connection() as conn:
+                    with conn:
                         conn.execute(
                             "INSERT INTO club_events (club_id, event_name, event_date, location, description) VALUES (?, ?, ?, ?, ?)",
                             (club_id, event_name, event_date, location, description))
                     st.success("Wydarzenie dodane!")
                 except sqlite3.Error as e:
                     st.error(f"Błąd podczas dodawania wydarzenia: {e}")
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
 def display_events():
     """Display upcoming club events."""
     st.subheader("Nadchodzące Wydarzenia")
-    with create_connection() as conn:
+    conn = create_connection()
+    if conn is None:
+        return
+    try:
         events = pd.read_sql_query(
             "SELECT clubs.name, event_name, event_date, location, description FROM club_events JOIN clubs ON club_events.club_id = clubs.id",
             conn)
@@ -403,6 +536,10 @@ def display_events():
                 st.write(f"Data: {event.event_date}")
                 st.write(f"Miejsce: {event.location}")
                 st.write(f"Opis: {event.description}")
+    except sqlite3.Error as e:
+        st.error(f"Błąd dostępu do bazy danych: {e}")
+    finally:
+        conn.close()
 
 # Main application
 def main():
