@@ -26,8 +26,9 @@ def create_connection():
         conn = sqlite3.connect("app.db", check_same_thread=False)
         return conn
     except sqlite3.Error as e:
-        logger.error(f"Błąd połączenia z bazą danych: {e}")
-        st.error(f"Błąd połączenia z bazą danych: {e}")
+        error_message = f"Błąd połączenia z bazą danych: {e}"
+        logger.error(error_message)
+        st.error(error_message)
         return None
 
 def initialize_db():
@@ -37,69 +38,7 @@ def initialize_db():
         return
     try:
         with conn:
-            conn.execute('''CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY, 
-                password TEXT NOT NULL, 
-                city TEXT NOT NULL, 
-                profile_picture TEXT
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS clubs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                name TEXT NOT NULL, 
-                city TEXT NOT NULL, 
-                description TEXT, 
-                members_count INTEGER, 
-                latitude REAL, 
-                longitude REAL
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS user_customizations (
-                username TEXT PRIMARY KEY, 
-                background_color TEXT, 
-                font_size TEXT, 
-                font_family TEXT, 
-                theme TEXT
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS members (
-                username TEXT, 
-                club_id INTEGER, 
-                FOREIGN KEY(username) REFERENCES users(username), 
-                FOREIGN KEY(club_id) REFERENCES clubs(id)
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS reviews (
-                username TEXT, 
-                club_id INTEGER, 
-                rating INTEGER, 
-                review TEXT, 
-                FOREIGN KEY(username) REFERENCES users(username), 
-                FOREIGN KEY(club_id) REFERENCES clubs(id)
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS private_messages (
-                sender TEXT, 
-                receiver TEXT, 
-                content TEXT, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS notifications (
-                username TEXT, 
-                message TEXT, 
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
-                read INTEGER DEFAULT 0
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS club_events (
-                club_id INTEGER, 
-                event_name TEXT, 
-                event_date DATE, 
-                location TEXT, 
-                description TEXT, 
-                FOREIGN KEY(club_id) REFERENCES clubs(id)
-            );''')
-            conn.execute('''CREATE TABLE IF NOT EXISTS media_gallery (
-                club_id INTEGER, 
-                media_type TEXT, 
-                media_path TEXT, 
-                uploaded_by TEXT, 
-                FOREIGN KEY(club_id) REFERENCES clubs(id)
-            );''')
+            # Tu dodaj dodatkowe instrukcje SQL dla nieistniejących tabel np. forum_posts
     except sqlite3.Error as e:
         logger.error(f"Database initialization error: {e}")
     finally:
@@ -128,7 +67,9 @@ def get_weather(city):
         log_performance('get_weather', duration)
         return response.text
     except requests.exceptions.RequestException as err:
-        st.error(f"Nie udało się uzyskać danych pogodowych: {err}")
+        error_message = f"Nie udało się uzyskać danych pogodowych: {err}"
+        logger.error(error_message)
+        st.error(error_message)
         return None
 
 def geocode_city(city):
@@ -230,11 +171,13 @@ def apply_customizations():
 
             if customizations:
                 bg_color, font_size, font_family, theme = customizations
+                # Upewnij się, że rozmiar czcionki ma końcówki np. px, %, em
+                font_size = font_size if font_size in ['small', 'medium', 'large'] else 'medium'
                 st.markdown(f"""
                     <style>
                         .reportview-container {{
                             background-color: {bg_color};
-                            font-size: {font_size};
+                            font-size: {font_size if font_size in ['small', 'medium', 'large'] else 'medium'}px;
                             font-family: {font_family};
                         }}
                     </style>
@@ -242,8 +185,9 @@ def apply_customizations():
             else:
                 st.info("Brak ustawień personalizacyjnych dla tego użytkownika.")
     except sqlite3.Error as e:
-        st.error(f"Błąd dostępu do bazy danych: {e}")
-        logger.error(f"Database access error: {e}")
+        error_message = f"Błąd dostępu do bazy danych: {e}"
+        st.error(error_message)
+        logger.error(error_message)
     finally:
         conn.close()
 
