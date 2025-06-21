@@ -52,7 +52,54 @@ def initialize_db():
                 latitude REAL, 
                 longitude REAL
             );''')
-            # Create other required tables here
+            conn.execute('''CREATE TABLE IF NOT EXISTS user_customizations (
+                username TEXT PRIMARY KEY, 
+                background_color TEXT, 
+                font_size TEXT, 
+                font_family TEXT, 
+                theme TEXT
+            );''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS members (
+                username TEXT, 
+                club_id INTEGER, 
+                FOREIGN KEY(username) REFERENCES users(username), 
+                FOREIGN KEY(club_id) REFERENCES clubs(id)
+            );''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS reviews (
+                username TEXT, 
+                club_id INTEGER, 
+                rating INTEGER, 
+                review TEXT, 
+                FOREIGN KEY(username) REFERENCES users(username), 
+                FOREIGN KEY(club_id) REFERENCES clubs(id)
+            );''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS private_messages (
+                sender TEXT, 
+                receiver TEXT, 
+                content TEXT, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS notifications (
+                username TEXT, 
+                message TEXT, 
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, 
+                read INTEGER DEFAULT 0
+            );''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS club_events (
+                club_id INTEGER, 
+                event_name TEXT, 
+                event_date DATE, 
+                location TEXT, 
+                description TEXT, 
+                FOREIGN KEY(club_id) REFERENCES clubs(id)
+            );''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS media_gallery (
+                club_id INTEGER, 
+                media_type TEXT, 
+                media_path TEXT, 
+                uploaded_by TEXT, 
+                FOREIGN KEY(club_id) REFERENCES clubs(id)
+            );''')
     except sqlite3.Error as e:
         logger.error(f"Database initialization error: {e}")
     finally:
