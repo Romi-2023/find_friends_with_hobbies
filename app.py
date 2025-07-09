@@ -257,16 +257,24 @@ def log_performance(endpoint, duration):
 def get_weather(city):
     try:
         start_time = time.time()
-        response = requests.get(f"http://wttr.in/{city}?format=3")
-        response.raise_for_status()
+        response_c = requests.get(f"http://wttr.in/{city}?format=%t")
+        response_f = requests.get(f"http://wttr.in/{city}?format=%t&u")
+
+        response_c.raise_for_status()
+        response_f.raise_for_status()
+
         duration = time.time() - start_time
         log_performance('get_weather', duration)
-        return response.text
+
+        temp_c = response_c.text.strip()
+        temp_f = response_f.text.strip()
+
+        return f"{temp_c} (C), {temp_f} (F)"
     except requests.exceptions.RequestException as err:
         logger.error(f"Nie udało się uzyskać danych pogodowych: {err}")
         st.error(f"Nie udało się uzyskać danych pogodowych: {err}")
         return None
-
+    
 def geocode_city(city_name):
     """Fetch geolocation for city using geopy."""
     geolocator = Nominatim(user_agent="club_app")
