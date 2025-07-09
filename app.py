@@ -8,6 +8,8 @@ import streamlit as st
 import logging
 from dotenv import load_dotenv
 from geopy.geocoders import Nominatim
+import folium
+from streamlit_folium import st_folium
 
 # Set up page configuration
 st.set_page_config(page_title="Znajdz przyjaciół z hobby", layout="wide")
@@ -853,10 +855,19 @@ def show_osm_map():
         if df.empty:
             st.info("No saved clubs to display on the map.")
         else:
-            df = df[['latitude', 'longitude']]
-            st.map(df)
+            # Środek mapy
+            avg_lat = df['latitude'].mean()
+            avg_lon = df['longitude'].mean()
+            m = folium.Map(location=[avg_lat, avg_lon], zoom_start=10)
+
             for index, row in df.iterrows():
-                st.write(f"**{row.name}**: ({row.latitude}, {row.longitude})")
+                folium.Marker(
+                    location=[row['latitude'], row['longitude']],
+                    popup=row['name'],
+                    icon=folium.Icon(icon='flag')
+                ).add_to(m)
+
+            st_folium(m, width=700, height=500)
     except sqlite3.Error as e:
         st.error(get_translation('error_db_access').format(error=e))
         logger.error(get_translation('error_db_access').format(error=e))
