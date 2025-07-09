@@ -351,7 +351,8 @@ def logout():
 
 def set_user_customizations():
     st.subheader(get_translation('user_profile'))
-    background_color = st.color_picker(get_translation('create_club'), "#FFFFFF")
+    # Changed the label of the color picker to a more appropriate one
+    background_color = st.color_picker("Background Color", "#FFFFFF")
     font_size = st.selectbox("Font Size", ['small', 'medium', 'large'])
     font_family = st.selectbox("Font Family", ['Arial', 'Courier New', 'Comic Sans MS', 'Georgia'])
     theme = st.selectbox("Theme", ['light', 'dark'])
