@@ -1,10 +1,12 @@
 import os
+import streamlit as st
+from deep_translator import GoogleTranslator
+from functools import lru_cache
 import time
 import requests
 import bcrypt
-import sqlite3
+import psycopg2
 import pandas as pd
-import streamlit as st
 import logging
 from dotenv import load_dotenv
 from geopy.geocoders import Nominatim
@@ -12,7 +14,7 @@ import folium
 from streamlit_folium import st_folium
 
 # Set up page configuration
-st.set_page_config(page_title="Znajdz przyjaciół z hobby", layout="wide")
+st.set_page_config(page_title="Znajdź przyjaciół z hobby", layout="wide")
 
 # Load environment variables
 load_dotenv()
@@ -27,118 +29,199 @@ if not os.path.exists('media'):
 
 # Global styles
 st.markdown("""
-    <style>
-        .stTextInput, .stTextArea, .stSelectbox, .stCheckbox, .stButton {
-            margin-bottom: 10px; /* Add spacing between elements */
-        }
-        .reportview-container {
-            padding: 2rem;
-        }
-        .title {
-            font-size: 2rem;
-            text-align: center;
-            color: #333;
-        }
-        .sidebar .sidebar-content {
-            background: #f4f4f4;
-        }
-    </style>
+<style>
+    .stTextInput, .stTextArea, .stSelectbox, .stCheckbox, .stButton {
+        margin-bottom: 10px;
+        font-family: 'Arial', sans-serif;
+        font-size: 16px;
+    }
+    .reportview-container {
+        padding: 2rem;
+    }
+    .main .block-container {
+        max-width: 800px;
+        padding: 2rem;
+        margin: auto;
+        background-color: #f7f7f7;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .title {
+        font-size: 2.5rem;
+        text-align: center;
+        color: #333;
+        font-weight: 700;
+    }
+    .sidebar .sidebar-content {
+        background: #f0f0f5;
+        color: #5f5f5f;
+    }
+    .stButton>button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        padding: 10px 20px;
+    }
+    .stButton>button:hover {
+        background-color: #45a049;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 # Translation dictionary
 translations = {
-    'pl': {
-        'title': '📌 Znajdz przyjaciół z hobby',
-        'login': 'Logowanie',
-        'register': 'Rejestracja',
-        'admin': 'Panel Administracyjny',
-        'username': 'Nazwa użytkownika',
-        'password': 'Hasło',
-        'city': 'Miasto',
-        'accept_terms': 'Akceptuję regulamin aplikacji',
-        'register_success': 'Rejestracja powiodła się!',
-        'user_exists': 'Ten użytkownik już istnieje.',
-        'weather': 'Pogoda',
-        'members': 'Członkowie',
-        'gallery': 'Galeria Klubowa',
-        'logout': 'Wyloguj się',
-        'user_profile': 'Profil użytkownika',
-        'error_db_access': 'Błąd dostępu do bazy danych: {error}',
-        'events': 'Wydarzenia',
-        'upcoming_events': 'Nadchodzące Wydarzenia',
-        'create_club': 'Utwórz Klub',
-        'club_list': 'Lista klubów',
-        'club_name': 'Nazwa Klubu',
-        'club_description': 'Opis',
-        'join_club': 'Dołącz do',
-        'average_rating': 'Średnia ocena',
-        'add_review': 'Dodaj recenzję',
-        'new_message': 'Wyślij wiadomość',
-        'send': 'Wyślij',
-        'select_member': 'Wyszukaj członka klubu',
-        'menu': 'Menu',
-        'profile': 'Profil',
-        'search_clubs': 'Wyszukaj kluby (według nazwy lub miasta)',
-        'search': 'Szukaj',
-        'language_prompt': 'Wybierz język | Choose language'
+    'Find friends with hobbies': {
+        'en': 'Find friends with hobbies',
+        'pl': 'Znajdź przyjaciół z hobby'
     },
-    'en': {
-        'title': '📌 Find friends with hobbies',
-        'login': 'Login',
-        'register': 'Register',
-        'admin': 'Admin Panel',
-        'username': 'Username',
-        'password': 'Password',
-        'city': 'City',
-        'accept_terms': 'I accept the terms and conditions',
-        'register_success': 'Registration successful!',
-        'user_exists': 'This user already exists.',
-        'weather': 'Weather',
-        'members': 'Members',
-        'gallery': 'Club Gallery',
-        'logout': 'Logout',
-        'user_profile': 'User Profile',
-        'error_db_access': 'Database access error: {error}',
-        'events': 'Events',
-        'upcoming_events': 'Upcoming Events',
-        'create_club': 'Create Club',
-        'club_list': 'Club List',
-        'club_name': 'Club Name',
-        'club_description': 'Description',
-        'join_club': 'Join',
-        'average_rating': 'Average Rating',
-        'add_review': 'Add Review',
-        'new_message': 'New Message',
-        'send': 'Send',
-        'select_member': 'Search Club Member',
-        'menu': 'Menu',
-        'profile': 'Profile',
-        'search_clubs': 'Search clubs (by name or city)',
-        'search': 'Search',
-        'language_prompt': 'Wybierz język | Choose language'
-    }
+    'Login': {
+        'en': 'Login',
+        'pl': 'Zaloguj się'
+    },
+    'Register': {
+        'en': 'Register',
+        'pl': 'Zarejestruj się'
+    },
+    'Username': {
+        'en': 'Username',
+        'pl': 'Nazwa użytkownika'
+    },
+    'Password': {
+        'en': 'Password',
+        'pl': 'Hasło'
+    },
+    'City': {
+        'en': 'City',
+        'pl': 'Miasto'
+    },
+    'I accept the terms and conditions': {
+        'en': 'I accept the terms and conditions',
+        'pl': 'Akceptuję warunki i zasady'
+    },
+    'Registration successful!': {
+        'en': 'Registration successful!',
+        'pl': 'Rejestracja zakończona sukcesem!'
+    },
+    'This user already exists.': {
+        'en': 'This user already exists.',
+        'pl': 'Ten użytkownik już istnieje.'
+    },
+    'All fields must be filled.': {
+        'en': 'All fields must be filled.',
+        'pl': 'Wszystkie pola muszą być wypełnione.'
+    },
+    'Logged in successfully!': {
+        'en': 'Logged in successfully!',
+        'pl': 'Zalogowano pomyślnie!'
+    },
+    'Invalid username or password.': {
+        'en': 'Invalid username or password.',
+        'pl': 'Nieprawidłowa nazwa użytkownika lub hasło.'
+    },
+    'Logout': {
+        'en': 'Logout',
+        'pl': 'Wyloguj się'
+    },
+    'create_club': {
+        'en': 'Create Club',
+        'pl': 'Stwórz klub'
+    },
+    'club_name': {
+        'en': 'Club Name',
+        'pl': 'Nazwa klubu'
+    },
+    'club_description': {
+        'en': 'Club Description',
+        'pl': 'Opis klubu'
+    },
+    'club_list': {
+        'en': 'Club List',
+        'pl': 'Lista klubów'
+    },
+    'gallery': {
+        'en': 'Gallery',
+        'pl': 'Galeria'
+    },
+    'Clubs Map': {
+        'en': 'Clubs Map',
+        'pl': 'Mapa klubów'
+    },
+    'Messages': {
+        'en': 'Messages',
+        'pl': 'Wiadomości'
+    },
+    'upcoming_events': {
+        'en': 'Upcoming Events',
+        'pl': 'Nadchodzące wydarzenia'
+    },
+    'select_member': {
+        'en': 'Select Member',
+        'pl': 'Wybierz członka'
+    },
+    'Search by Hobby': {
+        'en': 'Search by Hobby',
+        'pl': 'Szukaj po hobby'
+    },
+    'User Recommendations': {
+        'en': 'User Recommendations',
+        'pl': 'Rekomendacje użytkowników'
+    },
+    'terms_of_service': {
+        'en': 'Terms of Service',
+        'pl': 'Warunki usługi'
+    },
+    'menu': {
+        'en': 'Menu',
+        'pl': 'Menu'
+    },
+    'profile': {
+        'en': 'Profile',
+        'pl': 'Profil'
+    },
+    'user_profile': {
+        'en': 'User Profile',
+        'pl': 'Profil użytkownika'
+    },
+    # Dodaj więcej tłumaczeń jeśli są potrzebne
 }
 
-# Function to get the current translation based on the session language
-def get_translation(key):
-    lang = st.session_state.get('language', 'pl')
-    return translations[lang].get(key, key)
+def translate(key, dest_language):
+    return translations.get(key, {}).get(dest_language, key)
 
-# Function to display language selection in the sidebar
-def language_menu():
-    st.sidebar.subheader(get_translation('language_prompt'))
-    language = st.sidebar.radio("", ["Polski", "English"])
-    st.session_state['language'] = 'pl' if language == "Polski" else 'en'
+# Cached translation using deep_translator
+@lru_cache(maxsize=1024)
+def cached_translate(text, dest_language):
+    try:
+        translated = GoogleTranslator(source='auto', target=dest_language).translate(text)
+        return translated
+    except Exception as e:
+        st.error(f"Translation error: {e}")
+        return text
 
-# Helper functions
+def language_selector():
+    languages = {'en': 'English', 'pl': 'Polski'}
+    selected_language = st.sidebar.selectbox("Select Language / Wybierz język", options=languages.keys(), format_func=languages.get)
+
+    logger.info(f"Selected language: {selected_language}")
+
+    st.session_state['language'] = selected_language
+
 def create_connection():
     try:
-        conn = sqlite3.connect("app.db", check_same_thread=False)
-        logger.info("Połączenie z bazą danych utworzone.")
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST'),
+            database=os.getenv('DB_NAME'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            port=os.getenv('DB_PORT')
+        )
+        logger.info("Connected to database.")
         return conn
-    except sqlite3.Error as e:
-        logger.error(f"Błąd połączenia z bazą danych: {e}")
-        st.error(get_translation('error_db_access').format(error=e))
+    except Exception as e:
+        logger.error(f"Database connection error: {e}")
+        st.error(translate('Database access error: {error}', st.session_state['language']).format(error=e))
         return None
 
 def initialize_db():
@@ -147,8 +230,9 @@ def initialize_db():
         return
     try:
         with conn:
-            logger.info("Inicjalizacja bazy danych.")
-            conn.execute('''
+            logger.info("Initializing database.")
+            cursor = conn.cursor()
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     username TEXT PRIMARY KEY,
                     password TEXT NOT NULL,
@@ -157,9 +241,17 @@ def initialize_db():
                     description TEXT DEFAULT ''
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS hobbies (
+                    username TEXT NOT NULL,
+                    hobby TEXT NOT NULL,
+                    PRIMARY KEY (username, hobby),
+                    FOREIGN KEY (username) REFERENCES users(username)
+                );
+            ''')
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS clubs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     name TEXT NOT NULL,
                     city TEXT NOT NULL,
                     description TEXT,
@@ -168,7 +260,7 @@ def initialize_db():
                     longitude REAL
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS members (
                     username TEXT NOT NULL,
                     club_id INTEGER NOT NULL,
@@ -177,9 +269,9 @@ def initialize_db():
                     FOREIGN KEY (club_id) REFERENCES clubs(id)
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS reviews (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     username TEXT NOT NULL,
                     club_id INTEGER NOT NULL,
                     rating INTEGER NOT NULL,
@@ -188,9 +280,9 @@ def initialize_db():
                     FOREIGN KEY (club_id) REFERENCES clubs(id)
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS media_gallery (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     club_id INTEGER NOT NULL,
                     media_type TEXT NOT NULL,
                     media_path TEXT NOT NULL,
@@ -198,28 +290,28 @@ def initialize_db():
                     FOREIGN KEY (club_id) REFERENCES clubs(id)
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS notifications (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     username TEXT NOT NULL,
                     message TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    read INTEGER DEFAULT 0,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    read BOOLEAN DEFAULT FALSE,
                     FOREIGN KEY (username) REFERENCES users(username)
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS private_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     sender TEXT NOT NULL,
                     receiver TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (sender) REFERENCES users(username),
                     FOREIGN KEY (receiver) REFERENCES users(username)
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS user_customizations (
                     username TEXT PRIMARY KEY,
                     background_color TEXT DEFAULT '#FFFFFF',
@@ -229,9 +321,9 @@ def initialize_db():
                     FOREIGN KEY (username) REFERENCES users(username)
                 );
             ''')
-            conn.execute('''
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS club_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     club_id INTEGER NOT NULL,
                     event_name TEXT NOT NULL,
                     event_date DATE NOT NULL,
@@ -240,9 +332,21 @@ def initialize_db():
                     FOREIGN KEY (club_id) REFERENCES clubs(id)
                 );
             ''')
-            logger.info("Tabele w bazie danych zostały utworzone.")
-    except sqlite3.Error as e:
-        logger.error(f"Błąd podczas inicjalizacji bazy danych: {e}")
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS forum_messages (
+                    id SERIAL PRIMARY KEY,
+                    club_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (club_id) REFERENCES clubs(id),
+                    FOREIGN KEY (username) REFERENCES users(username)
+                );
+            ''')
+            conn.commit()
+            logger.info("Tables created successfully.")
+    except Exception as e:
+        logger.error(f"Error during database initialization: {e}")
     finally:
         conn.close()
 
@@ -259,374 +363,409 @@ def log_performance(endpoint, duration):
 def get_weather(city):
     try:
         start_time = time.time()
-        response_c = requests.get(f"http://wttr.in/{city}?format=%t")
+        response = requests.get(f"http://wttr.in/{city}?format=%t")
+        response.raise_for_status()
+        temp_c = response.text.strip()
         response_f = requests.get(f"http://wttr.in/{city}?format=%t&u")
-
-        response_c.raise_for_status()
         response_f.raise_for_status()
-
+        temp_f = response_f.text.strip()
         duration = time.time() - start_time
         log_performance('get_weather', duration)
-
-        temp_c = response_c.text.strip()
-        temp_f = response_f.text.strip()
-
-        return f"{temp_c} (C), {temp_f} (F)"
-    except requests.exceptions.RequestException as err:
-        logger.error(f"Nie udało się uzyskać danych pogodowych: {err}")
-        st.error(f"Nie udało się uzyskać danych pogodowych: {err}")
+        if temp_c:
+            return f"{temp_c} (C), {temp_f} (F)"
+        return "Weather data retrieval failed."
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Weather data retrieval failed: {e}")
+        st.error("Weather data retrieval failed. Please try again later.")
         return None
-    
+
 def geocode_city(city_name):
-    """Fetch geolocation for city using geopy."""
     geolocator = Nominatim(user_agent="club_app")
     location = geolocator.geocode(city_name)
     if location:
         return location.latitude, location.longitude
     else:
-        st.warning(f"Nie udało się znaleźć lokalizacji dla miasta: {city_name}")
+        st.warning(f"Could not locate city: {city_name}")
         return None, None
 
 def register_user():
-    st.subheader(get_translation('register'))
+    st.subheader(translate('Register', st.session_state.get('language', 'en')))
     col1, col2 = st.columns(2)
     with col1:
-        username = st.text_input(get_translation('username'))
-        password = st.text_input(get_translation('password'), type="password")
+        username = st.text_input(translate('Username', st.session_state.get('language', 'en')))
+        password = st.text_input(translate('Password', st.session_state.get('language', 'en')), type="password")
     with col2:
-        city = st.text_input(get_translation('city'))
-        accept_terms = st.checkbox(get_translation('accept_terms'))
-
-    if st.button(get_translation('register')):
-        if username and password and city and accept_terms:
+        city = st.text_input(translate('City', st.session_state.get('language', 'en')))
+    show_terms = st.checkbox(translate("I accept the terms and conditions", st.session_state.get('language', 'en')), value=False)
+    if show_terms:
+        show_terms_of_service()
+    terms_accepted = st.checkbox(translate('I accept the terms and conditions', st.session_state.get('language', 'en')), disabled=not show_terms)
+    privacy_policy_accepted = st.checkbox(translate("I accept the privacy policy", st.session_state.get('language', 'en')), disabled=not show_terms)
+    if st.button(translate('Register', st.session_state.get('language', 'en'))):
+        if username and password and city and terms_accepted and privacy_policy_accepted:
             hashed_pw = hash_password(password)
-            try:
-                with create_connection() as conn:
+            with create_connection() as conn:
+                try:
                     cursor = conn.cursor()
                     cursor.execute(
-                        "INSERT INTO users (username, password, city, description) VALUES (?, ?, ?, '')",
+                        "INSERT INTO users (username, password, city, description) VALUES (%s, %s, %s, '')",
                         (username, hashed_pw, city)
                     )
-                    st.success(get_translation('register_success'))
-                    logger.info(f"Użytkownik {username} zarejestrowany.")
-            except sqlite3.IntegrityError:
-                st.error(get_translation('user_exists'))
-                logger.warning(f"Użytkownik {username} już istnieje.")
-            except sqlite3.Error as e:
-                st.error(get_translation('error_db_access').format(error=e))
-                logger.error(f"Błąd dostępu do bazy danych: {e}")
-        elif not accept_terms:
-            st.warning(get_translation('accept_terms'))
+                    conn.commit()
+                    st.success(translate('Registration successful!', st.session_state.get('language', 'en')))
+                    logger.info(f"User {username} registered.")
+                except psycopg2.IntegrityError:
+                    st.error(translate('This user already exists.', st.session_state.get('language', 'en')))
+                except Exception as e:
+                    st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+                    logger.error(f"Database access error: {e}")
         else:
-            st.warning("Wszystkie pola muszą być wypełnione.")
+            st.warning(translate('All fields must be filled.', st.session_state.get('language', 'en')))
+
+def show_terms_of_service():
+    st.subheader(translate('terms_of_service', st.session_state.get('language', 'en')))
+    st.markdown("""
+    1. **General Provisions**  
+       - These terms of service outline the rules for using the club app.  
+       - Using the app implies acceptance of these terms.
+    2. **Registration and User Account**  
+       - Users must register an account using real information.  
+       - Users are responsible for the security of their account and password.
+    3. **App Usage Rules**  
+       - Users agree to use the app in accordance with applicable law and good manners.  
+       - Posting offensive, illegal, or socially unacceptable content is prohibited.
+    4. **Privacy and Data Storage**  
+       - The app stores user data for the proper functioning of services.  
+       - User data will not be shared with third parties without user consent, except as required by law.
+    5. **Liability**  
+       - The app creators are not liable for any damages resulting from using the app.  
+       - Users agree to take full responsibility for their actions in the app.
+    6. **Changes to Terms**  
+       - The terms may change. Users will be notified of any changes.  
+       - Continued use of the app after changes implies acceptance of the new terms.
+    7. **Contact and Technical Support**  
+       - Direct all questions and concerns regarding app operation to: support@example.com.
+    """)
 
 def login_user():
-    st.subheader(get_translation('login'))
+    logger.debug("Entering login_user function")
+    st.subheader(translate('Login', st.session_state.get('language', 'en')))
     col1, col2 = st.columns(2)
     with col1:
-        username = st.text_input(get_translation('username'))
+        username = st.text_input(translate('Username', st.session_state.get('language', 'en')))
     with col2:
-        password = st.text_input(get_translation('password'), type="password")
-
-    if st.button(get_translation('login')):
-        if username and password:
-            conn = create_connection()
-            if conn is None:
-                return
+        password = st.text_input(translate('Password', st.session_state.get('language', 'en')), type="password")
+    if st.button(translate('Login', st.session_state.get('language', 'en'))):
+        logger.debug("Login button clicked")
+        with create_connection() as conn:
             try:
-                with conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
-                    user = cursor.fetchone()
-                    if user and check_password(user[0], password):
-                        st.session_state['logged_in'] = True
-                        st.session_state['username'] = username
-                        st.success(f"Witaj, {username}!")
-                        logger.info(f"Użytkownik {username} zalogowany.")
-                    else:
-                        st.error("Błędna nazwa użytkownika lub hasło.")
-                        logger.warning(f"Błędne dane logowania dla użytkownika: {username}.")
-            except sqlite3.Error as e:
-                st.error(get_translation('error_db_access').format(error=e))
-                logger.error(f"Błąd dostępu do bazy danych: {e}")
-            finally:
-                conn.close()
-        else:
-            st.warning("Wszystkie pola muszą być wypełnione.")
+                cursor = conn.cursor()
+                cursor.execute("SELECT password FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+                if user and check_password(user[0], password):
+                    st.session_state['logged_in'] = True
+                    st.session_state['username'] = username
+                    st.session_state['active_page'] = "profile"
+                    st.success(translate('Logged in successfully!', st.session_state.get('language', 'en')))
+                    logger.info(f"User {username} logged in successfully.")
+                    st.rerun()
+                else:
+                    st.error(translate('Invalid username or password.', st.session_state.get('language', 'en')))
+            except Exception as e:
+                logger.error(f"Error during login process: {e}")
+                st.error("An error occurred while processing your request. Please try again.")
 
 def logout():
-    st.session_state.clear()
     st.session_state['logged_in'] = False
-    st.success("Wylogowano pomyślnie!")
+    st.success(translate("Logged out successfully!", st.session_state.get('language', 'en')))
+    st.rerun()
 
 def set_user_customizations():
-    st.subheader(get_translation('user_profile'))
-    # Changed the label of the color picker to a more appropriate one
-    background_color = st.color_picker("Background Color", "#FFFFFF")
-    font_size = st.selectbox("Font Size", ['small', 'medium', 'large'])
-    font_family = st.selectbox("Font Family", ['Arial', 'Courier New', 'Comic Sans MS', 'Georgia'])
-    theme = st.selectbox("Theme", ['light', 'dark'])
-
-    if st.button("Save Settings"):
-        conn = create_connection()
-        if conn is None:
-            return
-        try:
-            with conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO user_customizations (username, background_color, font_size, font_family, theme) VALUES (?, ?, ?, ?, ?)",
-                    (st.session_state['username'], background_color, font_size, font_family, theme)
-                )
-            st.success("Settings saved!")
-            logger.info("User customization settings saved.")
-        except sqlite3.Error as e:
-            st.error(get_translation('error_db_access').format(error=e))
-            logger.error(f"Database access error: {e}")
-        finally:
-            conn.close()
+    st.subheader(translate('user_profile', st.session_state.get('language', 'en')))
+    st.subheader(translate('Your Hobbies', st.session_state.get('language', 'en')))
+    hobby_list = ["Reading", "Sports", "Traveling", "Cooking", "Music", "Others"]
+    selected_hobbies = st.multiselect(translate('Select Your Hobbies', st.session_state.get('language', 'en')), hobby_list)
+    new_hobby = st.text_input(translate('Or Add a New Hobby', st.session_state.get('language', 'en')))
+    if st.button(translate('Save Hobbies', st.session_state.get('language', 'en'))):
+        with create_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM hobbies WHERE username = %s", (st.session_state['username'],))
+            for hobby in selected_hobbies:
+                cursor.execute("INSERT INTO hobbies (username, hobby) VALUES (%s, %s)", (st.session_state['username'], hobby))
+            if new_hobby:
+                cursor.execute("INSERT INTO hobbies (username, hobby) VALUES (%s, %s)", (st.session_state['username'], new_hobby))
+            conn.commit()
+            st.success(translate('Hobbies updated!', st.session_state.get('language', 'en')))
+            logger.info(f"User {st.session_state['username']} updated hobbies.")
 
 def apply_customizations():
     username = st.session_state.get('username')
     if not username:
-        st.error("Error: No username in session state")
+        st.error("Error: No username in session.")
         return
-
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
-        with conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT background_color, font_size, font_family, theme FROM user_customizations WHERE username = ?", (username,))
-            customizations = cursor.fetchone()
-
-            if customizations:
-                bg_color, font_size, font_family, theme = customizations
-                font_size = {'small': '12', 'medium': '16', 'large': '20'}.get(font_size, '16')
-                st.markdown(f"""
-                    <style>
-                        .reportview-container {{
-                            background-color: {bg_color};
-                            font-size: {font_size}px;
-                            font-family: {font_family};
-                        }}
-                    </style>
-                """, unsafe_allow_html=True)
-                logger.info("User customizations applied.")
-            else:
-                st.info("No customization settings for this user.")
-                logger.warning("No customization settings found for user.")
-
-    except sqlite3.Error as e:
-        logger.error(get_translation('error_db_access').format(error=e))
-        st.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
+    with create_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT background_color, font_size, font_family, theme FROM user_customizations WHERE username = %s", (username,))
+        customizations = cursor.fetchone()
+        if customizations:
+            bg_color, font_size, font_family, theme = customizations
+            font_size = {'small': '12', 'medium': '16', 'large': '20'}.get(font_size, '16')
+            st.markdown(f"""
+                <style>
+                    .reportview-container {{
+                        background-color: {bg_color};
+                        font-size: {font_size}px;
+                        font-family: {font_family};
+                    }}
+                </style>
+            """, unsafe_allow_html=True)
+            logger.info("User customizations applied.")
+        else:
+            st.info(translate('No customization settings for this user.', st.session_state.get('language', 'en')))
+            logger.warning("No customization settings found for user.")
 
 def admin_dashboard():
-    st.subheader(get_translation('admin'))
-    analytics_choice = st.radio("Select Analysis Type", ("User Activity", "Club Statistics"))
-
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
-        with conn:
-            logger.info("Loading data for admin dashboard.")
+    st.subheader(translate('admin', st.session_state.get('language', 'en')))
+    analytics_choice = st.radio(translate("Select Analysis Type", st.session_state.get('language', 'en')), ("User Activity", "Club Statistics"))
+    with create_connection() as conn:
+        try:
             if analytics_choice == "Club Statistics":
                 club_stats = pd.read_sql_query("SELECT name, members_count FROM clubs", conn)
                 st.bar_chart(club_stats.set_index('name'))
-
             users = pd.read_sql_query("SELECT * FROM users", conn)
             clubs = pd.read_sql_query("SELECT * FROM clubs", conn)
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
+        except Exception as e:
+            st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+            logger.error(f"Database access error: {e}")
 
-    st.write("User List:")
+    st.write(translate("User List:", st.session_state.get('language', 'en')))
     st.table(users)
 
     if not users.empty:
-        user_to_delete = st.selectbox("Select a user to delete", users['username'])
-        if st.button("Delete selected user"):
-            conn = create_connection()
-            if conn is None:
-                return
-            try:
-                with conn:
-                    conn.execute("DELETE FROM users WHERE username = ?", (user_to_delete,))
-                    st.success(f"User {user_to_delete} deleted!")
+        user_to_delete = st.selectbox(translate("Select a user to delete", st.session_state.get('language', 'en')), users['username'])
+        if st.button(translate("Delete selected user", st.session_state.get('language', 'en'))):
+            with create_connection() as conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM users WHERE username = %s", (user_to_delete,))
+                    conn.commit()
+                    st.success(translate(f"User {user_to_delete} deleted!", st.session_state.get('language', 'en')))
                     logger.info(f"Deleted user {user_to_delete}.")
-            except sqlite3.Error as e:
-                st.error(get_translation('error_db_access').format(error=e))
-                logger.error(get_translation('error_db_access').format(error=e))
-            finally:
-                conn.close()
+                except Exception as e:
+                    st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+                    logger.error(f"Database access error: {e}")
 
-    st.write("Club List:")
+    st.write(translate("Club List:", st.session_state.get('language', 'en')))
     st.table(clubs)
 
     if not clubs.empty:
-        club_to_delete = st.selectbox("Select a club to delete", clubs['name'])
-        if st.button("Delete selected club"):
-            conn = create_connection()
-            if conn is None:
-                return
-            try:
-                with conn:
-                    conn.execute("DELETE FROM clubs WHERE name = ?", (club_to_delete,))
-                    st.success(f"Club {club_to_delete} deleted!")
+        club_to_delete = st.selectbox(translate("Select a club to delete", st.session_state.get('language', 'en')), clubs['name'])
+        if st.button(translate("Delete selected club", st.session_state.get('language', 'en'))):
+            with create_connection() as conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM clubs WHERE name = %s", (club_to_delete,))
+                    conn.commit()
+                    st.success(translate(f"Club {club_to_delete} deleted!", st.session_state.get('language', 'en')))
                     logger.info(f"Deleted club {club_to_delete}.")
-            except sqlite3.Error as e:
-                st.error(get_translation('error_db_access').format(error=e))
-                logger.error(get_translation('error_db_access').format(error=e))
-            finally:
-                conn.close()
+                except Exception as e:
+                    st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+                    logger.error(f"Database access error: {e}")
 
 def create_club():
-    st.subheader(get_translation('create_club'))
-    club_name = st.text_input(get_translation('club_name'))
-    city = st.text_input(get_translation('city'))
-    description = st.text_area(get_translation('club_description'))
-    if st.button(get_translation('create_club')):
-        conn = create_connection()
-        if conn is None:
+    st.subheader(translate('create_club', st.session_state.get('language', 'en')))
+    club_name = st.text_input(translate('club_name', st.session_state.get('language', 'en')))
+    city = st.text_input(translate('City', st.session_state.get('language', 'en')))
+    description = st.text_area(translate('club_description', st.session_state.get('language', 'en')))
+    if st.button(translate('create_club', st.session_state.get('language', 'en'))):
+        lat, lon = geocode_city(city)
+        if lat is None and lon is None:
             return
-        try:
-            lat, lon = geocode_city(city)
-            if lat is None and lon is None:
-                return
-
-            with conn:
-                conn.execute(
-                    "INSERT INTO clubs (name, city, description, members_count, latitude, longitude) VALUES (?, ?, ?, 0, ?, ?)",
+        with create_connection() as conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO clubs (name, city, description, members_count, latitude, longitude) VALUES (%s, %s, %s, 0, %s, %s)",
                     (club_name, city, description, lat, lon)
                 )
-                st.success(f"Club {club_name} created!")
+                conn.commit()
+                st.success(translate(f"Club {club_name} created!", st.session_state.get('language', 'en')))
                 logger.info(f"Club {club_name} successfully added.")
                 show_osm_map()
-        except sqlite3.Error as e:
-            st.error(get_translation('error_db_access').format(error=e))
-            logger.error(get_translation('error_db_access').format(error=e))
-        finally:
-            conn.close()
+            except psycopg2.Error as e:
+                st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+                logger.error(f"Database access error: {e}")
+
+def search_by_hobby():
+    st.subheader(translate("Search by Hobby", st.session_state.get('language', 'en')))
+    hobby_search = st.text_input(translate("Enter a hobby to find users", st.session_state.get('language', 'en')))
+    if st.button(translate("Search", st.session_state.get('language', 'en'))):
+        with create_connection() as conn:
+            users_with_hobby = pd.read_sql_query(
+                "SELECT users.username, users.city FROM hobbies INNER JOIN users ON hobbies.username = users.username WHERE hobby = %s",
+                conn, params=(hobby_search,)
+            )
+            if users_with_hobby.empty:
+                st.info(translate("No users found with this hobby.", st.session_state.get('language', 'en')))
+            else:
+                st.table(users_with_hobby)
+
+def recommend_users():
+    st.subheader(translate("User Recommendations", st.session_state.get('language', 'en')))
+    username = st.session_state.get('username')
+    if not username:
+        st.warning(translate("You need to log in to get recommendations.", st.session_state.get('language', 'en')))
+        return
+    with create_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT h2.username, COUNT(h2.hobby) as shared_hobbies FROM hobbies h1 INNER JOIN hobbies h2 ON h1.hobby = h2.hobby WHERE h1.username = %s AND h2.username != %s GROUP BY h2.username ORDER BY shared_hobbies DESC LIMIT 5",
+            (username, username)
+        )
+        recommendations = cursor.fetchall()
+        if recommendations:
+            for rec in recommendations:
+                st.write(translate(f"User: {rec[0]}, Shared Hobbies: {rec[1]}", st.session_state.get('language', 'en')))
+        else:
+            st.info(translate("No recommendations available.", st.session_state.get('language', 'en')))
 
 def view_clubs():
-    st.subheader(get_translation('club_list'))
-    search_term = st.text_input(get_translation('search_clubs'))
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
+    st.subheader(translate('club_list', st.session_state.get('language', 'en')))
+    search_term = st.text_input(translate('search_clubs', st.session_state.get('language', 'en')))
+    with create_connection() as conn:
         df = pd.read_sql_query("SELECT * FROM clubs", conn)
         if search_term:
             df = df[df['name'].str.contains(search_term, case=False) | df['city'].str.contains(search_term, case=False)]
-
         if df.empty:
-            st.info("No clubs to display.")
+            st.info(translate("No clubs to display.", st.session_state.get('language', 'en')))
             return
-
         for index, row in df.iterrows():
             st.markdown(f"### {row['name']} ({row['city']})")
             st.write(row['description'])
             weather = get_weather(row['city'])
             if weather:
-                st.write(f"{get_translation('weather')}: {weather}")
-            st.write(f"{get_translation('members')}: {row['members_count']}")
+                st.write(f"{translate('weather', st.session_state.get('language', 'en'))}: {weather}")
+            else:
+                st.warning(translate("Could not retrieve weather data for this city.", st.session_state.get('language', 'en')))
+            st.write(f"{translate('members', st.session_state.get('language', 'en'))}: {row['members_count']}")
             rating = calculate_average_rating(row['id'])
-            st.write(f"{get_translation('average_rating')}: {rating}")
-            st.button(f"{get_translation('join_club')} {row['name']}", key=f"join_club_{index}", on_click=join_club, args=(row['id'],))
+            st.write(f"{translate('average_rating', st.session_state.get('language', 'en'))}: {rating}")
 
-            with st.expander("Ratings and Reviews"):
+            username = st.session_state.get('username')
+            is_member = False
+            if username:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM members WHERE username = %s AND club_id = %s", (username, row['id']))
+                is_member = cursor.fetchone() is not None
+
+            if is_member:
+                st.info(translate("You are a member of this club.", st.session_state.get('language', 'en')))
+                club_forum(row['id'])
+
+                with st.expander(translate("Add Event", st.session_state.get('language', 'en'))):
+                    event_name = st.text_input("Event Name", key=f"event_name_{index}")
+                    event_date = st.date_input("Event Date", key=f"event_date_{index}")
+                    location = st.text_input("Event Location", key=f"event_location_{index}")
+                    event_description = st.text_area("Event Description", key=f"event_description_{index}")
+
+                    if st.button("Add Event", key=f"add_event_{index}"):
+                        with conn:
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "INSERT INTO club_events (club_id, event_name, event_date, location, description) VALUES (%s, %s, %s, %s, %s)",
+                                (row['id'], event_name, event_date, location, event_description)
+                            )
+                            conn.commit()
+                            st.success(translate("Event added!", st.session_state.get('language', 'en')))
+                            logger.info(f"Event {event_name} added to club {row['name']}.")
+            else:
+                st.button(f"{translate('join_club', st.session_state.get('language', 'en'))} {row['name']}", key=f"join_club_{index}", on_click=join_club, args=(row['id'],))
+
+            with st.expander(translate("Ratings and Reviews", st.session_state.get('language', 'en'))):
                 reviews = get_club_reviews(row['id'])
                 for review in reviews:
                     st.write(f"**{review['username']}**: {review['rating']}/5 - {review['review']}")
 
-                rating = st.slider("Your rating", 1, 5, 3, key=f"rating_slider_{index}")
-                review_text = st.text_area("Your review", key=f"review_text_{index}")
-                if st.button(get_translation('add_review'), key=f"review_{index}"):
+                rating = st.slider(translate("Your rating", st.session_state.get('language', 'en')), 1, 5, 3, key=f"rating_slider_{index}")
+                review_text = st.text_area(translate("Your review", st.session_state.get('language', 'en')), key=f"review_text_{index}")
+                if st.button(translate('add_review', st.session_state.get('language', 'en')), key=f"review_{index}"):
                     add_review(row['id'], rating, review_text)
 
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
-
 def calculate_average_rating(club_id):
-    conn = create_connection()
-    if conn is None:
-        return "No ratings"
-    try:
+    with create_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT AVG(rating) FROM reviews WHERE club_id = ?", (club_id,))
-        return cursor.fetchone()[0] or "No ratings"
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-        return "No ratings"
-    finally:
-        conn.close()
+        cursor.execute("SELECT AVG(rating) FROM reviews WHERE club_id = %s", (club_id,))
+        result = cursor.fetchone()
+        return result[0] if result else translate("No ratings", st.session_state.get('language', 'en'))
 
 def join_club(club_id):
     username = st.session_state.get('username')
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
-        with conn:
-            conn.execute("INSERT INTO members (username, club_id) VALUES (?, ?)", (username, club_id))
-            conn.execute("UPDATE clubs SET members_count = members_count + 1 WHERE id = ?", (club_id,))
-            st.success("You have joined the club!")
+    with create_connection() as conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO members (username, club_id) VALUES (%s, %s)", (username, club_id))
+            cursor.execute("UPDATE clubs SET members_count = members_count + 1 WHERE id = %s", (club_id,))
+            conn.commit()
+            st.success(translate("You have joined the club!", st.session_state.get('language', 'en')))
+            st.info(translate("You can now participate in the club's forum.", st.session_state.get('language', 'en')))
             logger.info(f"User {username} joined club ID: {club_id}.")
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
+        except psycopg2.Error as e:
+            st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+            logger.error(f"Database access error: {e}")
+
+def club_forum(club_id):
+    st.subheader(translate("Club Forum", st.session_state.get('language', 'en')))
+    with create_connection() as conn:
+        try:
+            messages = pd.read_sql_query(
+                "SELECT username, message, timestamp FROM forum_messages WHERE club_id = %s ORDER BY timestamp DESC",
+                conn, params=(club_id,)
+            )
+            for message in messages.itertuples():
+                st.markdown(f"**{message.username}** at {message.timestamp}:")
+                st.write(message.message)
+
+            new_message = st.text_area(translate("Write a new message", st.session_state.get('language', 'en')))
+            if st.button(translate("Send", st.session_state.get('language', 'en'))):
+                if new_message.strip():
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO forum_messages (club_id, username, message) VALUES (%s, %s, %s)",
+                        (club_id, st.session_state['username'], new_message)
+                    )
+                    conn.commit()
+                    st.success(translate("Message sent!", st.session_state.get('language', 'en')))
+                    logger.info(f"Message sent by {st.session_state['username']} to club ID: {club_id}.")
+                    st.experimental_rerun()
+                else:
+                    st.warning(translate("You cannot send an empty message.", st.session_state.get('language', 'en')))
+        except psycopg2.Error as e:
+            st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+            logger.error(f"Database access error: {e}")
 
 def get_club_reviews(club_id):
-    conn = create_connection()
-    if conn is None:
-        return []
-    try:
+    with create_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT username, rating, review FROM reviews WHERE club_id = ?", (club_id,))
+        cursor.execute("SELECT username, rating, review FROM reviews WHERE club_id = %s", (club_id,))
         reviews = cursor.fetchall()
         return [{'username': row[0], 'rating': row[1], 'review': row[2]} for row in reviews]
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-        return []
-    finally:
-        conn.close()
 
 def add_review(club_id, rating, review_text):
     username = st.session_state.get('username')
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
-        with conn:
-            conn.execute("INSERT INTO reviews (username, club_id, rating, review) VALUES (?, ?, ?, ?)", (username, club_id, rating, review_text))
-        st.success("Review added!")
+    with create_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO reviews (username, club_id, rating, review) VALUES (%s, %s, %s, %s)", (username, club_id, rating, review_text))
+        conn.commit()
+        st.success(translate("Review added!", st.session_state.get('language', 'en')))
         logger.info(f"Review added by {username} for club ID: {club_id}.")
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
 
 def manage_gallery(club_id):
-    st.subheader(get_translation('gallery'))
-    uploaded_file = st.file_uploader("Select an image or video", type=['jpg', 'jpeg', 'png', 'mp4'])
+    st.subheader(translate('gallery', st.session_state.get('language', 'en')))
+    uploaded_file = st.file_uploader(translate("Select an image or video", st.session_state.get('language', 'en')), type=['jpg', 'jpeg', 'png', 'mp4'])
     if uploaded_file:
         max_file_size = 10 * 1024 * 1024
-
         if uploaded_file.size > max_file_size:
-            st.error("File is too large! Maximum file size is 10 MB.")
+            st.error(translate("File is too large! Maximum file size is 10 MB.", st.session_state.get('language', 'en')))
             return
 
         media_type = "video" if uploaded_file.type.startswith('video') else "image"
@@ -634,228 +773,154 @@ def manage_gallery(club_id):
         with open(file_path, "wb") as f:
             f.write(uploaded_file.read())
 
-        conn = create_connection()
-        if conn is None:
-            return
-        try:
-            with conn:
-                conn.execute("INSERT INTO media_gallery (club_id, media_type, media_path, uploaded_by) VALUES (?, ?, ?, ?)",
-                             (club_id, media_type, file_path, st.session_state['username']))
-            st.success("File added to the gallery!")
+        with create_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO media_gallery (club_id, media_type, media_path, uploaded_by) VALUES (%s, %s, %s, %s)",
+                           (int(club_id), media_type, file_path, st.session_state['username']))
+            conn.commit()
+            st.success(translate("File added to the gallery!", st.session_state.get('language', 'en')))
             logger.info(f"File added to gallery for club ID: {club_id}.")
-        except sqlite3.Error as e:
-            st.error(get_translation('error_db_access').format(error=e))
-            logger.error(get_translation('error_db_access').format(error=e))
-        finally:
-            conn.close()
 
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
+    with create_connection() as conn:
         media_files = pd.read_sql_query(
-            "SELECT media_type, media_path FROM media_gallery WHERE club_id = ?", 
+            "SELECT media_type, media_path FROM media_gallery WHERE club_id = %s", 
             conn,
-            params=(club_id,))
+            params=(int(club_id),))
         if not media_files.empty:
             for file in media_files.itertuples():
                 if file.media_type == 'image':
                     st.image(file.media_path)
                 elif file.media_type == 'video':
                     st.video(file.media_path)
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
 
 def gallery():
-    st.subheader(get_translation('gallery'))
-
+    st.subheader(translate('gallery', st.session_state.get('language', 'en')))
     username = st.session_state.get('username')
     if not username:
-        st.error("User is not logged in.")
+        st.error(translate("User is not logged in.", st.session_state.get('language', 'en')))
         return
 
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
+    with create_connection() as conn:
         query = '''
         SELECT clubs.id, clubs.name
         FROM clubs
         INNER JOIN members ON clubs.id = members.club_id
-        WHERE members.username = ?
+        WHERE members.username = %s
         '''
         clubs = pd.read_sql_query(query, conn, params=(username,))
-
         if clubs.empty:
-            st.info("You do not belong to any club. Become a member to manage the gallery.")
+            st.info(translate("You do not belong to any club. Become a member to manage the gallery.", st.session_state.get('language', 'en')))
             return
 
         club_names = clubs['name'].tolist()
-        selected_club = st.selectbox("Select a club", club_names)
+        selected_club = st.selectbox(translate("Select a club", st.session_state.get('language', 'en')), club_names)
 
         if selected_club:
             club_id = clubs.loc[clubs['name'] == selected_club, 'id'].iloc[0]
             manage_gallery(club_id)
 
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
-
 def show_messages():
-    st.subheader("Private Messages")
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
+    st.subheader(translate("Private Messages", st.session_state.get('language', 'en')))
+    with create_connection() as conn:
         username = st.session_state['username']
         messages = pd.read_sql_query(
-            "SELECT sender, content, timestamp FROM private_messages WHERE receiver = ? ORDER BY timestamp DESC",
+            "SELECT sender, content, timestamp FROM private_messages WHERE receiver = %s ORDER BY timestamp DESC",
             conn, params=(username,))
         if messages.empty:
-            st.info("No messages.")
+            st.info(translate("No messages.", st.session_state.get('language', 'en')))
             logger.info("No messages for user.")
         else:
             for message in messages.itertuples():
-                st.markdown(f"From: {message.sender} - {message.timestamp}")
+                st.markdown(f"{translate('From', st.session_state.get('language', 'en'))}: {message.sender} - {message.timestamp}")
                 st.write(message.content)
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
 
 def send_message():
-    st.subheader(get_translation('new_message'))
-    receiver = st.text_input("To:")
-    content = st.text_area("Message content")
-    if st.button(get_translation('send')):
+    st.subheader(translate('new_message', st.session_state.get('language', 'en')))
+    receiver = st.text_input(translate("To:", st.session_state.get('language', 'en')))
+    content = st.text_area(translate("Message content", st.session_state.get('language', 'en')))
+    if st.button(translate('send', st.session_state.get('language', 'en'))):
         if receiver and content:
             sender = st.session_state['username']
-            conn = create_connection()
-            if conn is None:
-                return
-            try:
-                with conn:
-                    conn.execute("INSERT INTO private_messages (sender, receiver, content) VALUES (?, ?, ?)", 
-                                 (sender, receiver, content))
-                st.success("Message sent!")
+            with create_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO private_messages (sender, receiver, content) VALUES (%s, %s, %s)", 
+                             (sender, receiver, content))
+                conn.commit()
+                st.success(translate("Message sent!", st.session_state.get('language', 'en')))
                 logger.info(f"Message sent from {sender} to {receiver}.")
-            except sqlite3.Error as e:
-                st.error(get_translation('error_db_access').format(error=e))
-                logger.error(get_translation('error_db_access').format(error=e))
-            finally:
-                conn.close()
         else:
-            st.warning("Both fields must be filled!")
-
-def show_notifications():
-    st.subheader("Notifications")
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
-        username = st.session_state['username']
-        notifications = pd.read_sql_query(
-            "SELECT message, timestamp FROM notifications WHERE username = ? AND read = 0", 
-            conn, params=(username,))
-        if notifications.empty:
-            st.info("No new notifications.")
-            logger.info("No new notifications for user.")
-        else:
-            for notification in notifications.itertuples():
-                st.write(f"{notification.timestamp} - {notification.message}")
-
-        with conn:
-            conn.execute("UPDATE notifications SET read = 1 WHERE username = ? AND read = 0", (username,))
-            logger.info("Marked notifications as read.")
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
+            st.warning(translate("Both fields must be filled!", st.session_state.get('language', 'en')))
 
 def manage_events():
-    st.subheader("Club Events")
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
-        clubs = pd.read_sql_query("SELECT * FROM clubs", conn)
-        club_names = clubs['name'].unique()
-        selected_club = st.selectbox("Select a club", club_names)
-        if selected_club:
-            event_name = st.text_input("Event Name")
-            event_date = st.date_input("Event Date")
-            location = st.text_input("Event Location")
-            description = st.text_area("Event Description")
-            if st.button("Add Event"):
-                club_id = clubs.loc[clubs['name'] == selected_club, 'id'].iloc[0]
-                try:
-                    with conn:
-                        conn.execute(
-                            "INSERT INTO club_events (club_id, event_name, event_date, location, description) VALUES (?, ?, ?, ?, ?)",
-                            (club_id, event_name, event_date, location, description))
-                    st.success("Event added!")
+    st.subheader(translate("Club Events", st.session_state.get('language', 'en')))
+    with create_connection() as conn:
+        try:
+            clubs = pd.read_sql_query("SELECT * FROM clubs", conn)
+            club_names = clubs['name'].unique()
+            selected_club = st.selectbox(translate("Select a club", st.session_state.get('language', 'en')), club_names)
+            if selected_club:
+                event_name = st.text_input(translate("Event Name", st.session_state.get('language', 'en')))
+                event_date = st.date_input(translate("Event Date", st.session_state.get('language', 'en')))
+                location = st.text_input(translate("Event Location", st.session_state.get('language', 'en')))
+                description = st.text_area(translate("Event Description", st.session_state.get('language', 'en')))
+                if st.button(translate("Add Event", st.session_state.get('language', 'en'))):
+                    club_id = clubs.loc[clubs['name'] == selected_club, 'id'].iloc[0]
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO club_events (club_id, event_name, event_date, location, description) VALUES (%s, %s, %s, %s, %s)",
+                        (club_id, event_name, event_date, location, description))
+                    conn.commit()
+                    st.success(translate("Event added!", st.session_state.get('language', 'en')))
                     logger.info(f"Event {event_name} added to club {selected_club}.")
-                except sqlite3.Error as e:
-                    st.error(get_translation('error_db_access').format(error=e))
-                    logger.error(get_translation('error_db_access').format(error=e))
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
+                    members = pd.read_sql_query(
+                        "SELECT username FROM members WHERE club_id = %s", 
+                        conn, params=(club_id,))
+                    for member in members['username']:
+                        cursor.execute(
+                            "INSERT INTO notifications (username, message) VALUES (%s, %s)",
+                            (member, f"New event: {event_name} on {event_date} at {location} for club {selected_club}.")
+                        )
+                    conn.commit()
+        except Exception as e:
+            st.error(translate('Database access error: {error}', st.session_state.get('language', 'en')).format(error=e))
+            logger.error(f"Database access error: {e}")
 
 def display_events():
-    st.subheader(get_translation('upcoming_events'))
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
+    st.subheader(translate('upcoming_events', st.session_state.get('language', 'en')))
+    with create_connection() as conn:
         events = pd.read_sql_query(
             '''
             SELECT 
-                clubs.name, 
+                clubs.name AS club_name, 
                 event_name, 
                 event_date, 
                 location, 
                 club_events.description
             FROM club_events 
             JOIN clubs ON club_events.club_id = clubs.id
+            ORDER BY event_date ASC
             ''',
             conn
         )
+        events['event_date'] = pd.to_datetime(events['event_date'])
+
         if events.empty:
-            st.info("No upcoming events.")
+            st.info(translate("No upcoming events.", st.session_state.get('language', 'en')))
             logger.info("No upcoming events.")
         else:
             for event in events.itertuples():
-                st.markdown(f"### {event.event_name} at club {event.name}")
+                st.markdown(f"### {event.event_name} at club {event.club_name}")
                 st.write(f"Date: {event.event_date}")
                 st.write(f"Location: {event.location}")
                 st.write(f"Description: {event.description}")
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
 
 def show_osm_map():
-    st.subheader("Clubs Map")
-    conn = create_connection()
-    if conn is None:
-        return
-    try:
+    st.subheader(translate("Clubs Map", st.session_state.get('language', 'en')))
+    with create_connection() as conn:
         df = pd.read_sql_query("SELECT name, latitude, longitude FROM clubs", conn)
         if df.empty:
-            st.info("No saved clubs to display on the map.")
+            st.info(translate("No saved clubs to display on the map.", st.session_state.get('language', 'en')))
         else:
-            # Środek mapy
             avg_lat = df['latitude'].mean()
             avg_lon = df['longitude'].mean()
             m = folium.Map(location=[avg_lat, avg_lon], zoom_start=10)
@@ -868,88 +933,93 @@ def show_osm_map():
                 ).add_to(m)
 
             st_folium(m, width=700, height=500)
-    except sqlite3.Error as e:
-        st.error(get_translation('error_db_access').format(error=e))
-        logger.error(get_translation('error_db_access').format(error=e))
-    finally:
-        conn.close()
 
 def search_member():
-    st.subheader(get_translation('select_member'))
-    member_name = st.text_input(get_translation('search'))
-
-    if st.button(get_translation('search')):
-        conn = create_connection()
-        if conn is None:
-            return
-        try:
+    st.subheader(translate('select_member', st.session_state.get('language', 'en')))
+    member_name = st.text_input(translate('search', st.session_state.get('language', 'en')))
+    if st.button(translate('search', st.session_state.get('language', 'en'))):
+        with create_connection() as conn:
             members = pd.read_sql_query(
-                "SELECT clubs.name AS club_name, members.username FROM members INNER JOIN clubs ON members.club_id = clubs.id WHERE members.username LIKE ?",
+                "SELECT clubs.name AS club_name, members.username FROM members INNER JOIN clubs ON members.club_id = clubs.id WHERE members.username LIKE %s",
                 conn, params=(f'%{member_name}%',)
             )
-
             if members.empty:
-                st.info("No results.")
+                st.info(translate("No results.", st.session_state.get('language', 'en')))
                 logger.info("No search results for: " + member_name)
             else:
                 st.table(members)
                 logger.info(f"Search results for: {member_name}.")
-        except sqlite3.Error as e:
-            st.error(get_translation('error_db_access').format(error=e))
-            logger.error(get_translation('error_db_access').format(error=e))
-        finally:
-            conn.close()
 
-# Main application
 def main():
     initialize_db()
-
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
+    if 'active_page' not in st.session_state:
+        st.session_state['active_page'] = 'login'
 
-    language_menu()
+    language_selector()
 
-    st.markdown(f'<h1 class="title">{get_translation("title")}</h1>', unsafe_allow_html=True)
+    page_title_key = 'Find friends with hobbies'
+    st.markdown(f'<h1 class="title">{translate(page_title_key, st.session_state.get("language", "en"))}</h1>', unsafe_allow_html=True)
 
     if not st.session_state['logged_in']:
-        menu = [get_translation("login"), get_translation("register"), get_translation("admin")]
-        choice = st.sidebar.selectbox(get_translation("menu"), menu)
+        menu_options = [
+            translate("Login", st.session_state.get('language', 'en')),
+            translate("Register", st.session_state.get('language', 'en')),
+            translate('terms_of_service', st.session_state.get('language', 'en'))
+        ]
+        menu_choice = st.sidebar.radio(translate("menu", st.session_state.get('language', 'en')), menu_options, key='menu_choice')
 
-        if choice == get_translation("register"):
+        if menu_choice == translate("Register", st.session_state.get('language', 'en')):
             register_user()
-        elif choice == get_translation("login"):
+        elif menu_choice == translate("Login", st.session_state.get('language', 'en')):
             login_user()
-        elif choice == get_translation("admin"):
-            admin_dashboard()
+        elif menu_choice == translate('terms_of_service', st.session_state.get('language', 'en')):
+            show_terms_of_service()
     else:
-        apply_customizations()
-        menu = [get_translation("profile"), get_translation("create_club"), get_translation("club_list"), get_translation("gallery"),
-                "Mapa Klubów", "Wiadomości", "Powiadomienia", get_translation("events"), get_translation("select_member"), get_translation("logout")]
-        choice = st.sidebar.selectbox(get_translation("menu"), menu)
+        menu_options = [
+            translate('profile', st.session_state.get('language', 'en')),
+            translate("create_club", st.session_state.get('language', 'en')),
+            translate("club_list", st.session_state.get('language', 'en')),
+            translate("gallery", st.session_state.get('language', 'en')),
+            translate("Clubs Map", st.session_state.get('language', 'en')),
+            translate("Messages", st.session_state.get('language', 'en')),
+            translate("upcoming_events", st.session_state.get('language', 'en')),
+            translate("select_member", st.session_state.get('language', 'en')),
+            translate("Search by Hobby", st.session_state.get('language', 'en')),
+            translate("User Recommendations", st.session_state.get('language', 'en')),
+            translate('terms_of_service', st.session_state.get('language', 'en'))
+        ]
+        menu_choice = st.sidebar.radio(translate("menu", st.session_state.get('language', 'en')), menu_options, key='menu_choice')
 
-        if choice == get_translation("profile"):
-            st.subheader(f"{get_translation('user_profile')}: {st.session_state['username']}")
+        if st.sidebar.button(translate('Logout', st.session_state.get('language', 'en'))):
+            logout()
+
+        if menu_choice == translate('profile', st.session_state.get('language', 'en')):
+            apply_customizations()
+            st.subheader(f"{translate('user_profile', st.session_state.get('language', 'en'))}: {st.session_state['username']}")
             set_user_customizations()
-        elif choice == get_translation("create_club"):
+        elif menu_choice == translate("create_club", st.session_state.get('language', 'en')):
             create_club()
-        elif choice == get_translation("club_list"):
+        elif menu_choice == translate("club_list", st.session_state.get('language', 'en')):
             view_clubs()
-        elif choice == get_translation("gallery"):
+        elif menu_choice == translate("gallery", st.session_state.get('language', 'en')):
             gallery()
-        elif choice == "Mapa Klubów":
+        elif menu_choice == translate("Clubs Map", st.session_state.get('language', 'en')):
             show_osm_map()
-        elif choice == "Wiadomości":
+        elif menu_choice == translate("Messages", st.session_state.get('language', 'en')):
             show_messages()
             send_message()
-        elif choice == "Powiadomienia":
-            show_notifications()
-        elif choice == get_translation("events"):
-            manage_events()
+        elif menu_choice == translate("upcoming_events", st.session_state.get('language', 'en')):
             display_events()
-        elif choice == get_translation("select_member"):
+        elif menu_choice == translate("select_member", st.session_state.get('language', 'en')):
             search_member()
-        elif choice == get_translation("logout"):
-            logout()
+        elif menu_choice == translate("Search by Hobby", st.session_state.get('language', 'en')):
+            search_by_hobby()
+        elif menu_choice == translate("User Recommendations", st.session_state.get('language', 'en')):
+            recommend_users()
+        elif menu_choice == translate('terms_of_service', st.session_state.get('language', 'en')):
+            show_terms_of_service()
 
 if __name__ == "__main__":
     main()
