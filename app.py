@@ -201,6 +201,9 @@ def cached_translate(text, dest_language):
         return text
 
 def language_selector():
+    if 'language' not in st.session_state:
+        st.session_state['language'] = 'en'  # Set a default language, e.g., English
+
     languages = {'en': 'English', 'pl': 'Polski'}
     selected_language = st.sidebar.selectbox("Select Language / Wybierz język", options=languages.keys(), format_func=languages.get)
 
@@ -952,10 +955,14 @@ def search_member():
 
 def main():
     initialize_db()
+
+    # Initialize session variables
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
     if 'active_page' not in st.session_state:
         st.session_state['active_page'] = 'login'
+    if 'language' not in st.session_state:
+        st.session_state['language'] = 'en'  # Default language
 
     language_selector()
 
