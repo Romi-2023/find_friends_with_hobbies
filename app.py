@@ -212,6 +212,10 @@ def language_selector():
     st.session_state['language'] = selected_language
 
 def create_connection():
+    # Ensure the language is set before use
+    if 'language' not in st.session_state:
+        st.session_state['language'] = 'en'  # Default to English
+
     try:
         conn = psycopg2.connect(
             host=os.getenv('DB_HOST'),
@@ -954,8 +958,6 @@ def search_member():
                 logger.info(f"Search results for: {member_name}.")
 
 def main():
-    initialize_db()
-
     # Initialize session variables
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
@@ -965,67 +967,70 @@ def main():
         st.session_state['language'] = 'en'  # Default language
 
     language_selector()
+    initialize_db()
 
     page_title_key = 'Find friends with hobbies'
-    st.markdown(f'<h1 class="title">{translate(page_title_key, st.session_state.get("language", "en"))}</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 class="title">{translate(page_title_key, st.session_state["language"])}</h1>', unsafe_allow_html=True)
 
     if not st.session_state['logged_in']:
+        # Logic for non-logged-in users
         menu_options = [
-            translate("Login", st.session_state.get('language', 'en')),
-            translate("Register", st.session_state.get('language', 'en')),
-            translate('terms_of_service', st.session_state.get('language', 'en'))
+            translate("Login", st.session_state['language']),
+            translate("Register", st.session_state['language']),
+            translate('terms_of_service', st.session_state['language'])
         ]
-        menu_choice = st.sidebar.radio(translate("menu", st.session_state.get('language', 'en')), menu_options, key='menu_choice')
+        menu_choice = st.sidebar.radio(translate("menu", st.session_state['language']), menu_options, key='menu_choice')
 
-        if menu_choice == translate("Register", st.session_state.get('language', 'en')):
+        if menu_choice == translate("Register", st.session_state['language']):
             register_user()
-        elif menu_choice == translate("Login", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("Login", st.session_state['language']):
             login_user()
-        elif menu_choice == translate('terms_of_service', st.session_state.get('language', 'en')):
+        elif menu_choice == translate('terms_of_service', st.session_state['language']):
             show_terms_of_service()
     else:
+        # Logic for logged-in users
         menu_options = [
-            translate('profile', st.session_state.get('language', 'en')),
-            translate("create_club", st.session_state.get('language', 'en')),
-            translate("club_list", st.session_state.get('language', 'en')),
-            translate("gallery", st.session_state.get('language', 'en')),
-            translate("Clubs Map", st.session_state.get('language', 'en')),
-            translate("Messages", st.session_state.get('language', 'en')),
-            translate("upcoming_events", st.session_state.get('language', 'en')),
-            translate("select_member", st.session_state.get('language', 'en')),
-            translate("Search by Hobby", st.session_state.get('language', 'en')),
-            translate("User Recommendations", st.session_state.get('language', 'en')),
-            translate('terms_of_service', st.session_state.get('language', 'en'))
+            translate('profile', st.session_state['language']),
+            translate("create_club", st.session_state['language']),
+            translate("club_list", st.session_state['language']),
+            translate("gallery", st.session_state['language']),
+            translate("Clubs Map", st.session_state['language']),
+            translate("Messages", st.session_state['language']),
+            translate("upcoming_events", st.session_state['language']),
+            translate("select_member", st.session_state['language']),
+            translate("Search by Hobby", st.session_state['language']),
+            translate("User Recommendations", st.session_state['language']),
+            translate('terms_of_service', st.session_state['language'])
         ]
-        menu_choice = st.sidebar.radio(translate("menu", st.session_state.get('language', 'en')), menu_options, key='menu_choice')
+        menu_choice = st.sidebar.radio(translate("menu", st.session_state['language']), menu_options, key='menu_choice')
 
-        if st.sidebar.button(translate('Logout', st.session_state.get('language', 'en'))):
+        if st.sidebar.button(translate('Logout', st.session_state['language'])):
             logout()
 
-        if menu_choice == translate('profile', st.session_state.get('language', 'en')):
+        if menu_choice == translate('profile', st.session_state['language']):
             apply_customizations()
-            st.subheader(f"{translate('user_profile', st.session_state.get('language', 'en'))}: {st.session_state['username']}")
+            st.subheader(f"{translate('user_profile', st.session_state['language'])}: {st.session_state['username']}")
             set_user_customizations()
-        elif menu_choice == translate("create_club", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("create_club", st.session_state['language']):
             create_club()
-        elif menu_choice == translate("club_list", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("club_list", st.session_state['language']):
             view_clubs()
-        elif menu_choice == translate("gallery", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("gallery", st.session_state['language']):
             gallery()
-        elif menu_choice == translate("Clubs Map", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("Clubs Map", st.session_state['language']):
             show_osm_map()
-        elif menu_choice == translate("Messages", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("Messages", st.session_state['language']):
             show_messages()
             send_message()
-        elif menu_choice == translate("upcoming_events", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("upcoming_events", st.session_state['language']):
             display_events()
-        elif menu_choice == translate("select_member", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("select_member", st.session_state['language']):
             search_member()
-        elif menu_choice == translate("Search by Hobby", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("Search by Hobby", st.session_state['language']):
             search_by_hobby()
-        elif menu_choice == translate("User Recommendations", st.session_state.get('language', 'en')):
+        elif menu_choice == translate("User Recommendations", st.session_state['language']):
             recommend_users()
-        elif menu_choice == translate('terms_of_service', st.session_state.get('language', 'en')):
+        elif menu_choice == translate('terms_of_service', st.session_state['language']):
             show_terms_of_service()
 
 if __name__ == "__main__":
