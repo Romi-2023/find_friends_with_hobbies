@@ -403,11 +403,16 @@ def register_user():
         password = st.text_input(translate('Password', st.session_state.get('language', 'en')), type="password")
     with col2:
         city = st.text_input(translate('City', st.session_state.get('language', 'en')))
-    show_terms = st.checkbox(translate("I accept the terms and conditions", st.session_state.get('language', 'en')), value=False)
+
+    # Dodanie unikalnego klucza do checkboxów
+    show_terms = st.checkbox(translate("I accept the terms and conditions", st.session_state.get('language', 'en')), value=False, key='show_terms')
+
     if show_terms:
         show_terms_of_service()
-    terms_accepted = st.checkbox(translate('I accept the terms and conditions', st.session_state.get('language', 'en')), disabled=not show_terms)
-    privacy_policy_accepted = st.checkbox(translate("I accept the privacy policy", st.session_state.get('language', 'en')), disabled=not show_terms)
+
+    terms_accepted = st.checkbox(translate('I accept the terms and conditions', st.session_state.get('language', 'en')), disabled=not show_terms, key='terms_accepted')
+    privacy_policy_accepted = st.checkbox(translate("I accept the privacy policy", st.session_state.get('language', 'en')), disabled=not show_terms, key='privacy_policy_accepted')
+
     if st.button(translate('Register', st.session_state.get('language', 'en'))):
         if username and password and city and terms_accepted and privacy_policy_accepted:
             hashed_pw = hash_password(password)
@@ -639,7 +644,14 @@ def recommend_users():
 def view_clubs():
     st.subheader(translate('club_list', st.session_state.get('language', 'en')))
     search_term = st.text_input(translate('search_clubs', st.session_state.get('language', 'en')))
-    with create_connection() as conn:
+
+    # Nawiązywanie połączenia z bazą danych
+    conn = create_connection()  
+    if conn is None:
+        st.error("Failed to establish a database connection.")
+        return
+
+    with conn:
         df = pd.read_sql_query("SELECT * FROM clubs", conn)
         if search_term:
             df = df[df['name'].str.contains(search_term, case=False) | df['city'].str.contains(search_term, case=False)]
