@@ -651,7 +651,7 @@ def view_clubs():
         st.error("Failed to establish a database connection.")
         return
 
-    with conn:
+    try:
         df = pd.read_sql_query("SELECT * FROM clubs", conn)
         if search_term:
             df = df[df['name'].str.contains(search_term, case=False) | df['city'].str.contains(search_term, case=False)]
@@ -688,15 +688,14 @@ def view_clubs():
                     event_description = st.text_area("Event Description", key=f"event_description_{index}")
 
                     if st.button("Add Event", key=f"add_event_{index}"):
-                        with conn:
-                            cursor = conn.cursor()
-                            cursor.execute(
-                                "INSERT INTO club_events (club_id, event_name, event_date, location, description) VALUES (%s, %s, %s, %s, %s)",
-                                (row['id'], event_name, event_date, location, event_description)
-                            )
-                            conn.commit()
-                            st.success(translate("Event added!", st.session_state.get('language', 'en')))
-                            logger.info(f"Event {event_name} added to club {row['name']}.")
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO club_events (club_id, event_name, event_date, location, description) VALUES (%s, %s, %s, %s, %s)",
+                            (row['id'], event_name, event_date, location, event_description)
+                        )
+                        conn.commit()
+                        st.success(translate("Event added!", st.session_state.get('language', 'en')))
+                        logger.info(f"Event {event_name} added to club {row['name']}.")
             else:
                 st.button(f"{translate('join_club', st.session_state.get('language', 'en'))} {row['name']}", key=f"join_club_{index}", on_click=join_club, args=(row['id'],))
 
@@ -709,6 +708,12 @@ def view_clubs():
                 review_text = st.text_area(translate("Your review", st.session_state.get('language', 'en')), key=f"review_text_{index}")
                 if st.button(translate('add_review', st.session_state.get('language', 'en')), key=f"review_{index}"):
                     add_review(row['id'], rating, review_text)
+
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
+        logger.error(f"Error executing view_clubs: {e}")
+    finally:
+        conn.close()
 
 def calculate_average_rating(club_id):
     with create_connection() as conn:
