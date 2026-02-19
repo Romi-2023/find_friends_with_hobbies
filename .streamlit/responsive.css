@@ -1,0 +1,245 @@
+/* Czcionka – przyjazna, nowoczesna (Google Fonts) */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+/* Kolorystyka aplikacji – spójna z config.toml (teal + slate) */
+:root {
+    --app-primary: #0d9488;
+    --app-primary-hover: #0f766e;
+    --app-primary-light: #ccfbf1;
+    --app-bg: #f8fafc;
+    --app-bg-secondary: #f1f5f9;
+    --app-text: #1e293b;
+    --app-text-muted: #64748b;
+    --app-accent-warm: #ea580c;
+    --app-card-radius: 12px;
+    --app-card-shadow: 0 2px 8px rgba(13, 148, 136, 0.08);
+    --app-card-shadow-hover: 0 4px 14px rgba(13, 148, 136, 0.12);
+}
+
+/* Główna czcionka */
+.main, .main p, .main h1, .main h2, .main h3, [data-testid="stAppViewContainer"] {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Przyciski primary – wzmocnienie koloru z motywu */
+.stButton > button[kind="primary"] {
+    background-color: var(--app-primary) !important;
+    color: white !important;
+    border: none !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background-color: var(--app-primary-hover) !important;
+    border-color: var(--app-primary-hover) !important;
+}
+
+/* Nagłówki – kolorowe (teal), czytelne */
+h1 { color: var(--app-primary) !important; }
+h2 { color: #0f766e !important; }
+h3 { color: var(--app-text) !important; }
+.main p, .main span, .main label, .main .stMarkdown { color: var(--app-text) !important; }
+
+/* Linki i akcenty w treści */
+a { color: var(--app-primary) !important; }
+a:hover { color: var(--app-primary-hover) !important; }
+
+/* Przyciski według typu – kolorowe, czytelne */
+.stButton > button[kind="secondary"] {
+    background-color: #64748b !important;
+    color: #fff !important;
+    border: 1px solid #475569 !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    background-color: #475569 !important;
+}
+.stButton > button[kind="tertiary"] {
+    background-color: #dc2626 !important;
+    color: #fff !important;
+    border: 1px solid #b91c1c !important;
+}
+.stButton > button[kind="tertiary"]:hover {
+    background-color: #b91c1c !important;
+}
+
+/* Success / info – w tonie primary, zaokrąglone; tekst ZAWSZE ciemny (czytelny na jasnym tle) */
+.stSuccess, .stAlert,
+[data-testid="stAlert"] {
+    background-color: var(--app-primary-light) !important;
+    border-left-color: var(--app-primary) !important;
+    border-radius: var(--app-card-radius) !important;
+    padding: 1rem 1.25rem !important;
+    color: var(--app-text) !important;
+}
+[data-testid="stAlert"] { border-radius: var(--app-card-radius) !important; }
+/* Wszystkie elementy wewnątrz alertu – ciemny tekst (st.info, st.warning, st.error, st.success) */
+.stSuccess *, .stAlert *,
+[data-testid="stAlert"],
+[data-testid="stAlert"] *,
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] span,
+[data-testid="stAlert"] div,
+[data-testid="stAlert"] .stMarkdown,
+[data-testid="stAlert"] .stMarkdown * {
+    color: #1e293b !important;
+}
+
+/* Karty (kontenery z ramką) – mniejszy padding, żeby ramki mniej zwężały treść */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: var(--app-card-radius) !important;
+    box-shadow: var(--app-card-shadow) !important;
+    border: 1px solid rgba(13, 148, 136, 0.12) !important;
+    padding: 0.6rem 0.9rem !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    box-shadow: var(--app-card-shadow-hover) !important;
+}
+
+/* Expandery – spójny wygląd */
+[data-testid="stExpander"] {
+    border-radius: var(--app-card-radius) !important;
+    border: 1px solid rgba(13, 148, 136, 0.15) !important;
+    box-shadow: var(--app-card-shadow) !important;
+    overflow: hidden;
+}
+[data-testid="stExpander"] summary {
+    padding: 0.5rem 0.75rem !important;
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.04) 0%, transparent 100%) !important;
+    border-radius: var(--app-card-radius) var(--app-card-radius) 0 0 !important;
+}
+/* Zawartość expandera – mniejszy padding, mniej zwężona treść */
+[data-testid="stExpander"] > div {
+    padding: 0.5rem 0.75rem !important;
+}
+[data-testid="stExpander"] summary:hover {
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.08) 0%, transparent 100%) !important;
+}
+
+/* Responsywność: telefon, tablet, komputer – bez rozjeżdżania layoutu */
+
+/* Ograniczenie szerokości i brak poziomego scrolla */
+.block-container {
+    max-width: 100% !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
+.main .block-container {
+    overflow-x: hidden;
+}
+
+/* Na małych ekranach kolumny w jednej kolumnie (pełna szerokość) */
+@media (max-width: 768px) {
+    [data-testid="column"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 0 0 100% !important;
+    }
+    .block-container {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+}
+
+/* Większe obszary klikalne na dotyk (min ~44px) */
+.stButton > button {
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+}
+@media (max-width: 768px) {
+    .stButton > button {
+        width: 100%;
+        min-height: 48px;
+    }
+}
+
+/* Sidebar – gdy zwinięty, większy obszar na strzałkę i etykieta „Menu” */
+[data-testid="stSidebar"] {
+    min-width: 0;
+}
+/* Większy obszar klikalny przycisku rozwijania sidebara (strzałka ▶) */
+section[data-testid="stSidebar"] button[aria-label*="idebar"],
+section[data-testid="stSidebar"] button[aria-label*="enu"] {
+    min-width: 3rem !important;
+    min-height: 3rem !important;
+    padding: 0.75rem !important;
+}
+/* Etykieta „Menu” tylko przy przycisku strzałki (Streamlit nadaje aria-label) */
+section[data-testid="stSidebar"] button[aria-label*="idebar"]::after,
+section[data-testid="stSidebar"] button[aria-label*="enu"]::after {
+    content: " Menu";
+    font-size: 0.7rem;
+    margin-left: 0.25rem;
+    white-space: nowrap;
+}
+@media (max-width: 768px) {
+    [data-testid="stSidebar"] .stRadio > label {
+        font-size: 0.95rem;
+    }
+}
+
+/* Tabele / szeroki content – przewijanie w poziomie w obrębie kontenera zamiast całej strony */
+.stDataFrame, .stTable {
+    overflow-x: auto !important;
+    max-width: 100%;
+}
+.stDataFrame > div {
+    max-width: 100%;
+}
+
+/* Nagłówki i tekst – lepsze zawijanie */
+h1, h2, h3, p, .stMarkdown {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+h1 { font-size: clamp(1.5rem, 4vw, 2.25rem) !important; }
+h2 { font-size: clamp(1.25rem, 3vw, 1.75rem) !important; }
+h3 { font-size: clamp(1.1rem, 2.5vw, 1.35rem) !important; }
+
+/* Formularze – pełna szerokość na mobile */
+@media (max-width: 768px) {
+    .stTextInput input, .stTextArea textarea {
+        max-width: 100%;
+    }
+}
+
+/* Ograniczenie maksymalnej szerokości głównej treści na bardzo dużych ekranach (opcjonalnie) */
+@media (min-width: 1400px) {
+    .main .block-container {
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+/* Empty state – przyjazny blok gdy brak danych (używany z .empty-state w app) */
+.empty-state {
+    text-align: center;
+    padding: 2rem 1.5rem;
+    border-radius: var(--app-card-radius);
+    background: linear-gradient(180deg, var(--app-primary-light) 0%, rgba(255,255,255,0.5) 100%);
+    border: 1px dashed rgba(13, 148, 136, 0.3);
+    color: var(--app-text);
+}
+.empty-state .empty-state-icon { margin-bottom: 0.5rem; opacity: 0.9; }
+.empty-state .empty-state-icon svg { display: block; margin: 0 auto; }
+.empty-state .empty-state-text { color: var(--app-text-muted); font-size: 0.95rem; margin-bottom: 1rem; }
+
+/* Animacje – delikatny fade-in */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+[data-testid="stVerticalBlockBorderWrapper"] {
+    animation: fadeIn 0.35s ease-out;
+}
+[data-testid="stExpander"] {
+    animation: fadeIn 0.4s ease-out;
+}
+.stAlert, [data-testid="stAlert"] {
+    animation: fadeIn 0.3s ease-out;
+}

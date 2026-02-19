@@ -1,0 +1,11 @@
+[server]
+maxUploadSize = 50  # MB – globalny limit Streamlita
+
+# Kolorystyka aplikacji – ciepły, zachęcający teal + stonowane tła
+[theme]
+base = "light"
+primaryColor = "#0d9488"       # główny akcent (przyciski, linki) – teal
+backgroundColor = "#f8fafc"    # tło główne – jasny chłodny biały
+secondaryBackgroundColor = "#f1f5f9"  # karty, sidebar – delikatny szary
+textColor = "#1e293b"         # tekst – ciemny slate
+font = "sans serif"

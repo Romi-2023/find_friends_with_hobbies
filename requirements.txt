@@ -1,10 +1,12 @@
-streamlit
-deep-translator
-requests
-bcrypt
 psycopg2-binary
+streamlit
 pandas
+requests
 python-dotenv
 geopy
-folium
 streamlit-folium
+bcrypt
+folium
+Pillow
+pyotp
+qrcode

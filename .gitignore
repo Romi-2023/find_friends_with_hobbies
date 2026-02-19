@@ -1,1 +1,43 @@
+# Środowisko i sekrety
 .env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.python-version
+
+# Baza i dane lokalne
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logi i media (lokalne)
+logs/
+media/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE / edytory
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+
+# Notatniki (opcjonalnie)
+*.ipynb_checkpoints/
+helper.ipynb
+
+# System
+.DS_Store
+Thumbs.db

@@ -1,0 +1,21 @@
+# Nie kopiuj do obrazu Docker
+.env
+.env.*
+!.env.example
+.git
+__pycache__
+*.pyc
+.python-version
+.venv
+venv
+data/
+logs/
+media/
+.streamlit/secrets.toml
+*.db
+*.sqlite
+*.log
+.cursor
+.idea
+*.ipynb_checkpoints
+helper.ipynb
