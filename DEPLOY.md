@@ -90,6 +90,39 @@ Po wdrożeniu aplikacja będzie działać na DO App Platform z Twoją istniejąc
 
 ---
 
+## Sprawdzenie: czy baza jest podpięta pod aplikację
+
+Na App Platform **baza nie pojawia się w komponentach aplikacji** – masz osobny Managed Database (`db-postgresql-fra1-17985`) i użytkownika `find_friends_app`. Aplikacja łączy się z nią **wyłącznie przez zmienne środowiskowe**. Jeśli ich nie ma lub są błędne, dostaniesz biały ekran.
+
+### Checklist w DigitalOcean
+
+1. **Zmienne środowiskowe aplikacji**
+   - Wejdź: **Apps** → **find-friend-with-hobby-app** → **Settings** (lub **Components** → klik w komponent **find-friends-with-hobbies**).
+   - Sekcja **Environment Variables** (lub **App-Level Environment Variables**).
+   - **Muszą być ustawione:**
+     - **`DATABASE_URL`** – connection string do bazy (patrz niżej). Bez tego aplikacja nie wie, gdzie się łączyć.
+     - **`USE_SQLITE`** = **`0`** (żeby używać PostgreSQL zamiast SQLite).
+
+2. **Skąd wziąć DATABASE_URL**
+   - **Databases** → **db-postgresql-fra1-17985**.
+   - W zakładce **Overview** (lub **Connection details**) znajdź **Connection string** albo **Connection parameters**.
+   - Użyj użytkownika **`find_friends_app`** (i jego hasła – „show” przy użytkowniku). Format:
+     ```text
+     postgresql://find_friends_app:HASLO@HOST:PORT/defaultdb?sslmode=require
+     ```
+     Zastąp `HASLO` prawdziwym hasłem, `HOST` i `PORT` wartościami z panelu bazy. Dla Managed Database DO zwykle **musi** być `?sslmode=require`.
+
+3. **Dostęp sieciowy**
+   - W bazie: **Settings** → **Trusted Sources** (lub **Network**). Aplikacje App Platform w tym samym koncie często mają dostęp domyślnie; jeśli baza ma ograniczenie do konkretnych adresów, upewnij się, że ruch z App Platform jest dozwolony (np. „Allow all” lub odpowiedni zakres).
+
+4. **Logi po uruchomieniu**
+   - **Apps** → Twoja aplikacja → **Runtime Logs**.
+   - Otwórz stronę w przeglądarce (żeby wywołać połączenie do bazy), odśwież logi. Szukaj: `Postgres pool error`, `Schema init error`, `connection refused`, `timeout`, `permission denied`. To potwierdzi, czy problem to brak/źle podpiętej bazy.
+
+**Podsumowanie:** Baza jest „podpięta” tylko wtedy, gdy w ustawieniach **Web Service** masz ustawione `DATABASE_URL` (i `USE_SQLITE=0`). Brak `DATABASE_URL` lub błąd w connection stringu = biały ekran.
+
+---
+
 ## Rozwiązywanie problemów: biała strona mimo statusu „Healthy”
 
 Jeśli w przeglądarce widzisz **białą stronę**, a w DO aplikacja ma status **Healthy**, kontener się uruchamia, ale pierwsze renderowanie strony się nie udaje. Sprawdź poniższe punkty.
