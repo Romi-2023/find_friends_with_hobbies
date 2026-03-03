@@ -63,6 +63,8 @@ DB_USER = get_env("DB_USER", "postgres")
 DB_PASSWORD = get_env("DB_PASSWORD", "haslo123")
 DB_PORT = get_env("DB_PORT", 5432, cast=int)
 DATABASE_URL = get_env("DATABASE_URL", None)
+# Osobny schemat PostgreSQL przy współdzielonej bazie (np. find_friends). Puste = public.
+DB_SCHEMA = (get_env("DB_SCHEMA", "") or "").strip()
 
 # Baza: PostgreSQL (produkcja) lub SQLite (lokalne testy)
 # Ustaw USE_SQLITE=1 aby zapisywać dane w pliku (data/app.db) bez instalacji Postgresa.

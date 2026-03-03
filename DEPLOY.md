@@ -44,6 +44,7 @@ W ustawieniach komponentu **Web Service** (Twoja aplikacja) dodaj zmienne:
 |-------------------|----------------|
 | `DATABASE_URL`    | Connection string do PostgreSQL (z DO lub innej bazy). |
 | `USE_SQLITE`      | `0` (żeby wymusić PostgreSQL). |
+| `DB_SCHEMA`       | **Przy współdzielonej bazie:** nazwa schematu dla tej aplikacji (np. `find_friends`). Tabele powstają w tym schemacie; druga apka może używać `public` lub innego. Puste = `public`. |
 | `APP_PUBLIC_URL`  | Pełny URL aplikacji po wdrożeniu, np. `https://twoja-apka-xxxx.ondigitalocean.app`. |
 | `ADMIN_TOTP_SECRET` | Opcjonalnie – secret do 2FA admina (TOTP). |
 | `EMAIL_HOST`, `EMAIL_USER`, `EMAIL_PASSWORD`, `EMAIL_FROM`, `EMAIL_PORT` | Opcjonalnie – do wysyłki maili (reset hasła, weryfikacja). |
@@ -55,6 +56,10 @@ W ustawieniach komponentu **Web Service** (Twoja aplikacja) dodaj zmienne:
 - `USE_SQLITE=0`
 - `APP_PUBLIC_URL` = URL aplikacji na DO (możesz ustawić po pierwszym deployu i zaktualizować)
 
+**Przy współdzielonej bazie z inną aplikacją** (żeby obie działały bez konfliktów):
+
+- `DB_SCHEMA=find_friends` (lub inna nazwa; tylko litery, cyfry, podkreślenie)
+
 ## Krok 4: Migracje bazy
 
 Schemat i migracje (np. `initialize_db()`) uruchamiane są przy starcie aplikacji przy pierwszym połączeniu z bazą (jeśli tak jest w kodzie).  
@@ -63,7 +68,13 @@ Jeśli Twoja baza jest już używana przez inną apkę, **nie** twórz tabel od 
 - Tabele aplikacji Find Friends (np. `users`, `clubs`, `members`, `reports`, itd.) **istnieją** w tej samej bazie (w osobnym schemacie lub z prefiksem, jeśli tak ma być),
 - **albo** uruchomisz migracje tylko raz (np. przez skrypt lub pierwsze uruchomienie z pustą bazą dla tej aplikacji).
 
-Jeśli **współdzielisz bazę** z inną aplikacją, najlepiej użyć **osobnego schematu** (np. `find_friends`) albo upewnić się, że nazwy tabel się nie kłócą. Obecny kod zakłada tabele w domyślnym schemacie `public`.
+**Współdzielona baza – bez konfliktów:**  
+Ustaw zmienną **`DB_SCHEMA`** (np. `find_friends`). Aplikacja wtedy:
+- tworzy schemat `find_friends` w bazie (jeśli nie istnieje),
+- ustawia `search_path` na ten schemat przy każdym połączeniu,
+- wszystkie tabele (users, clubs, members, follows, club_events itd.) powstają w `find_friends`.
+
+Druga aplikacja może korzystać z schematu `public` (domyślny). Obie apki działają na jednej bazie bez wspólnych tabel.
 
 ## Krok 5: Deploy i weryfikacja
 

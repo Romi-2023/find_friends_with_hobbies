@@ -93,20 +93,50 @@ def _sqlite_connect():
 
 
 # ---------------------------------------------------------------------------
-# PostgreSQL (oryginalna logika)
+# PostgreSQL (oryginalna logika + osobny schemat przy współdzielonej bazie)
 # ---------------------------------------------------------------------------
+
+def _pg_schema_name() -> str:
+    """Zwraca bezpieczną nazwę schematu (tylko [a-zA-Z0-9_]) lub pustą przy public."""
+    s = getattr(config, "DB_SCHEMA", "") or ""
+    if not s:
+        return ""
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", s):
+        logger.warning("Invalid DB_SCHEMA ignored: %r", s)
+        return ""
+    return s
+
+
+def _pg_set_schema(conn):
+    """Dla PostgreSQL: tworzy schemat jeśli DB_SCHEMA ustawiony i ustawia search_path."""
+    schema = _pg_schema_name()
+    if not schema:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("CREATE SCHEMA IF NOT EXISTS %s" % schema)
+        cur.execute("SET search_path TO %s" % schema)
+        cur.close()
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to set DB schema %r: %s", schema, e)
+        raise
+
 
 def _pg_connection():
     import psycopg2
     if config.DATABASE_URL:
-        return psycopg2.connect(config.DATABASE_URL)
-    return psycopg2.connect(
-        host=config.DB_HOST,
-        database=config.DB_NAME,
-        user=config.DB_USER,
-        password=config.DB_PASSWORD,
-        port=config.DB_PORT,
-    )
+        conn = psycopg2.connect(config.DATABASE_URL)
+    else:
+        conn = psycopg2.connect(
+            host=config.DB_HOST,
+            database=config.DB_NAME,
+            user=config.DB_USER,
+            password=config.DB_PASSWORD,
+            port=config.DB_PORT,
+        )
+    _pg_set_schema(conn)
+    return conn
 
 
 @st.cache_resource
@@ -165,12 +195,15 @@ def get_pool():
 
 
 def db_conn():
-    """Zwraca połączenie z poolu (lub None)."""
+    """Zwraca połączenie z poolu (lub None). Dla PostgreSQL z DB_SCHEMA ustawia search_path."""
     pool = get_pool()
     if not pool:
         return None
     try:
-        return pool.getconn()
+        conn = pool.getconn()
+        if not getattr(config, "USE_SQLITE", False) and _pg_schema_name():
+            _pg_set_schema(conn)
+        return conn
     except Exception as e:
         logger.error("DB connection error: %s", e)
         return None

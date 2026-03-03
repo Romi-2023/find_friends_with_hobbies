@@ -1208,6 +1208,10 @@ translations = {
         "pl": "Panel Administracyjny",
     },
     "db_error": {"en": "Database access error.", "pl": "Błąd dostępu do bazy."},
+    "db_error_tables_hint": {
+        "pl": "Jeśli baza jest współdzielona, upewnij się, że istnieją tabele: follows, club_events (uruchom migracje).",
+        "en": "If the database is shared, ensure tables exists: follows, club_events (run migrations).",
+    },
     "db_not_configured": {
         "en": "Database is not connected (demo mode). Full functionality will be available after deployment.",
         "pl": "Baza danych nie jest podłączona (tryb demonstracyjny). Pełna funkcjonalność będzie dostępna po wdrożeniu.",
@@ -2018,6 +2022,17 @@ def initialize_db():
         return
     if not db_initialize_db():
         _error_box(t("db_error"))
+
+
+def _is_db_missing_table_error(e: Exception) -> bool:
+    """Czy wyjątek wygląda na brak tabeli (np. przy współdzielonej bazie bez migracji)."""
+    msg = (getattr(e, "msg", None) or getattr(e, "message", None) or str(e) or "").lower()
+    return (
+        "does not exist" in msg
+        or "relation" in msg
+        or "undefined_table" in msg
+        or "no such table" in msg
+    )
 
 
 # =========================
@@ -5620,7 +5635,19 @@ def create_club():
                     )
                     club_id = cur.fetchone()[0]
 
-                    add_member_to_club(username, club_id, role="owner")
+                    # Twórca klubu od razu jest członkiem (owner) – w tej samej transakcji
+                    cur.execute(
+                        """
+                        INSERT INTO members (username, club_id, role)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (username, club_id) DO UPDATE SET role = EXCLUDED.role
+                        """,
+                        (username, club_id, "owner"),
+                    )
+                    cur.execute(
+                        "UPDATE clubs SET members_count = (SELECT COUNT(*) FROM members WHERE club_id=%s) WHERE id=%s",
+                        (club_id, club_id),
+                    )
 
                 _success_box(t("club_created", name=club_name))
             except Exception as e:
@@ -6806,6 +6833,8 @@ def manage_events():
     except Exception as e:
         logger.error("Manage events error: %s", e)
         _error_box(t("db_error"))
+        if _is_db_missing_table_error(e):
+            _info_box(t("db_error_tables_hint"))
     finally:
         db_release(conn)
 
@@ -7708,6 +7737,8 @@ def recommend_users():
     except Exception as e:
         logger.error("User recommendations error: %s", e)
         _error_box(t("db_error"))
+        if _is_db_missing_table_error(e):
+            _info_box(t("db_error_tables_hint"))
     finally:
         db_release(conn)
 
@@ -7916,6 +7947,8 @@ def friends_page():
     except Exception as e:
         logger.error("Friends page error: %s", e)
         _error_box(t("db_error"))
+        if _is_db_missing_table_error(e):
+            _info_box(t("db_error_tables_hint"))
     finally:
         db_release(conn)
 
