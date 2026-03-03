@@ -5281,7 +5281,10 @@ def post_register_hobbies_step():
                     )
             st.session_state["post_register_add_hobbies"] = False
             st.session_state["post_register_username"] = None
-            st.session_state["pre_filled_login"] = username
+            # Od razu zaloguj użytkownika – nie trzeba drugi raz wpisywać danych
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = username
+            st.session_state["is_admin"] = False
             _success_box(t("register_success"))
             _info_box(t("register_created_info"))
             st.rerun()
