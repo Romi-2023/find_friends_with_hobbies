@@ -8229,7 +8229,11 @@ find_friends_with_hobbies@proton.me
 # APP START / MAIN
 # =========================
 
-initialize_db()
+try:
+    initialize_db()
+except Exception as e:
+    logger.exception("initialize_db failed (shared DB or permissions?): %s", e)
+    _error_box(t("db_connection_error") + " " + (str(e)[:200] or ""))
 
 # --- Flag stanu (przed jakimkolwiek widokiem) ---
 if "logged_in" not in st.session_state:

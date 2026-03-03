@@ -87,3 +87,50 @@ Jeśli **współdzielisz bazę** z inną aplikacją, najlepiej użyć **osobnego
 4. Deploy i ustawienie `APP_PUBLIC_URL` na docelowy URL.
 
 Po wdrożeniu aplikacja będzie działać na DO App Platform z Twoją istniejącą bazą PostgreSQL.
+
+---
+
+## Rozwiązywanie problemów: biała strona mimo statusu „Healthy”
+
+Jeśli w przeglądarce widzisz **białą stronę**, a w DO aplikacja ma status **Healthy**, kontener się uruchamia, ale pierwsze renderowanie strony się nie udaje. Sprawdź poniższe punkty.
+
+### 1. Runtime Logs (najważniejsze)
+
+W DO: **Apps** → Twoja aplikacja → zakładka **Runtime Logs** (lub **Console**).
+
+- Szukaj błędów typu: `Postgres pool error`, `Schema init error`, `connection refused`, `timeout`, `permission denied`.
+- Jeśli przy pierwszym wejściu na stronę w logach pojawia się wyjątek z `db.py` lub `app.py`, to właśnie on blokuje wyświetlenie interfejsu.
+
+### 2. Współdzielona baza danych – możliwe przyczyny
+
+Tak, **współdzielona baza z inną aplikacją może być przyczyną** białej strony lub błędów. Typowe problemy:
+
+| Problem | Objaw / co sprawdzić |
+|--------|----------------------|
+| **Brak uprawnień** | Użytkownik bazy nie ma praw `CREATE` / `ALTER` w schemacie `public`. Aplikacja przy starcie wywołuje `initialize_db()` (CREATE TABLE IF NOT EXISTS, ALTER TABLE …). Brak uprawnień → błąd w logach, strona może zostać pusta. |
+| **Konflikt tabel** | Druga aplikacja ma tabele o tych samych nazwach (`users`, `clubs`, …) ale innej strukturze. `CREATE TABLE IF NOT EXISTS` nic nie zmieni, ale kolejne `ALTER TABLE … ADD COLUMN …` mogą się wyłożyć (np. inny typ kolumny). |
+| **Limit połączeń** | Dwie aplikacje łączące się do jednej bazy zużywają łącznie więcej połączeń. Przekroczenie limitu → błąd połączenia przy starcie, możliwa biała strona. |
+| **Timeout / sieć** | Wolna lub przeciążona baza albo problemy sieciowe. Połączenie trwa zbyt długo → request HTTP do aplikacji się przekracza → użytkownik widzi pustą stronę. |
+
+**Rekomendacja przy współdzielonej bazie:**
+
+- Użyj **osobnego schematu** (np. `find_friends`) i ustaw w `DATABASE_URL` opcję `options=-c search_path=find_friends` (oraz utwórz ten schemat w bazie), **albo**
+- Upewnij się, że tabele Find Friends (np. `users`, `clubs`, `members`, …) **istnieją i są zgodne** z tym, czego oczekuje ta aplikacja, i że użytkownik ma uprawnienia do `CREATE`/`ALTER` w tym schemacie.
+
+### 3. Zmienne środowiskowe
+
+W **Settings** → **App-Level** lub **Component** → zmienne środowiskowe sprawdź:
+
+- **`DATABASE_URL`** – poprawny connection string (np. `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require`). Dla Managed Database DO zwykle potrzebny jest `sslmode=require`.
+- **`USE_SQLITE`** – na wdrożeniu ustaw **`0`** (PostgreSQL). Gdy brakuje tej zmiennej, domyślnie może być używany SQLite, co na App Platform nie ma sensu i może prowadzić do błędów.
+- **`APP_PUBLIC_URL`** – ustaw na faktyczny URL aplikacji (np. `https://find-friend-with-hobby-app-9smie.ondigitalocean.app`).
+
+### 4. Szybki test bazy
+
+Jeśli masz dostęp do bazy (psql lub inny klient):
+
+- Połącz się tym samym użytkownikiem i tym samym hasłem co w `DATABASE_URL`.
+- Wykonaj: `SELECT 1;` oraz np. `SELECT current_user, current_database();`.
+- Sprawdź uprawnienia: czy użytkownik może tworzyć tabele w wybranym schemacie (np. `CREATE TABLE IF NOT EXISTS test_perm (id int); DROP TABLE test_perm;`).
+
+Dzięki temu upewnisz się, że problem nie leży w samym połączeniu ani w uprawnieniach.
