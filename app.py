@@ -5300,7 +5300,7 @@ def register_user():
             _warning_box(t("all_fields_required"))
             return
 
-        ok, err_msg = validate_username(username)
+        ok, err_msg = is_username_allowed(username)
         if not ok:
             _warning_box(t(err_msg))
             return
