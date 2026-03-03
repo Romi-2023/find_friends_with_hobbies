@@ -34,6 +34,7 @@ from config import (
 import db as _db
 from db import get_connection, get_pool, db_release, initialize_db as db_initialize_db
 import geo_weather
+from geo_weather import get_weather_by_coords
 import email_service
 import uploads
 from banned_words import BANNED_WORDS, all_banned_words_cached
@@ -197,6 +198,10 @@ translations = {
     "dashboard_join_btn": {"pl": "Dołącz do klubu", "en": "Join club"
     },
     "dashboard_join_success": {"pl": "Dołączono do klubu 🎉", "en": "You joined the club 🎉"},
+    "dashboard_create_club_in_profile": {
+        "pl": "Załóż klub w sekcji Profil (menu po lewej).",
+        "en": "Create a club in the Profile section (left menu).",
+    },
     "dashboard_suggested_caption": {
         "pl": "Propozycje klubów na podstawie Twoich zainteresowań – załóż jeden z nich:",
         "en": "Club suggestions based on your interests – create one of them:",
@@ -470,6 +475,9 @@ translations = {
     "sort_newest": {"pl": "Najnowsze", "en": "Newest"},
     "sort_popular": {"pl": "Najpopularniejsze", "en": "Most popular"},
     "no_clubs_for_filters": {"pl": "Brak klubów dla wybranych filtrów.", "en": "No clubs for the selected filters."},
+    "club_list_quick_select": {"pl": "Szybki wybór klubu", "en": "Quick club selection"},
+    "club_list_choose_placeholder": {"pl": "— Wybierz klub —", "en": "— Choose club —"},
+    "club_list_go_to_club": {"pl": "Przejdź do klubu", "en": "Go to club"},
     "status_you_are_member": {"pl": "Jesteś członkiem", "en": "You are a member"},
     "status_not_member": {"pl": "Nie należysz", "en": "You are not a member"},
     "manage_membership_hint": {"pl": "Kliknij, aby zarządzać członkostwem", "en": "Click to manage membership"},
@@ -2846,6 +2854,11 @@ def set_user_customizations():
 
     st.markdown("---")
 
+    # ===== STWÓRZ KLUB =====
+    create_club()
+
+    st.markdown("---")
+
     # ===== ZMIANA HASŁA =====
     st.subheader("🔐 " + t("profile_change_pw_header"))
 
@@ -3802,16 +3815,17 @@ def dashboard_view():
                             _success_box(join_success_msg)
                             st.rerun()
 
-            # 2️⃣ Jeśli nie ma rekomendacji z bazy, a są hobby – pokaż pomysły + formularz tworzenia klubu
+            # 2️⃣ Jeśli nie ma rekomendacji z bazy, a są hobby – pokaż pomysły + link do tworzenia klubu w Profilu
             elif suggested_club_names:
                 st.caption("✨ " + t("dashboard_suggested_caption"))
                 for name in suggested_club_names:
                     with st.container(border=True):
                         st.markdown(f"💡 **{name}**")
 
-                st.markdown("---")
-                # 🔽 tutaj wstawiamy formularz zakładania klubu
-                create_club()
+                st.caption(t("dashboard_create_club_in_profile"))
+                if st.button("👤 " + t("profile") + " → " + t("create_club"), key="dash_go_create_club", type="secondary"):
+                    st.session_state["menu_override"] = "profile"
+                    st.rerun()
 
             else:
                 _info_box(no_recommended_msg)
@@ -4031,16 +4045,18 @@ def get_club_details(club_id: int):
         with conn:
             cur = conn.cursor()
             cur.execute("""
-                SELECT 
+                SELECT
                     c.id,
                     c.name,
                     c.city,
                     c.description,
-                    COUNT(m.username) AS members_count
+                    COUNT(m.username) AS members_count,
+                    c.latitude,
+                    c.longitude
                 FROM clubs c
                 LEFT JOIN members m ON c.id = m.club_id
                 WHERE c.id = %s
-                GROUP BY c.id
+                GROUP BY c.id, c.name, c.city, c.description, c.latitude, c.longitude
             """, (club_id,))
             return cur.fetchone()
     finally:
@@ -5826,10 +5842,28 @@ def view_clubs():
 
     st.markdown("---")
 
-    # ===== KARTY KLUBÓW =====
+    # ===== LISTA DO WYBORU (gdy wiele klubów) =====
     if not clubs:
         _info_box(t("no_clubs_for_filters"))
         return
+
+    if len(clubs) > 5:
+        quick_options = [
+            (t("club_list_choose_placeholder"), None)
+        ] + [(f"{name} ({city})", club_id) for club_id, name, city, desc, members_count in clubs]
+        labels = [o[0] for o in quick_options]
+        selected_label = st.selectbox(
+            t("club_list_quick_select"),
+            labels,
+            key="club_list_quick_selectbox",
+        )
+        if selected_label and selected_label != quick_options[0][0]:
+            idx = labels.index(selected_label)
+            if idx > 0 and quick_options[idx][1] is not None:
+                if st.button(t("club_list_go_to_club"), key="club_list_go_btn", type="primary"):
+                    st.session_state["selected_club_id"] = quick_options[idx][1]
+                    st.rerun()
+        st.markdown("---")
 
     # helper do rysowania kart klubów (żeby nie kopiować kodu)
     def render_club_cards(club_rows):
@@ -5939,11 +5973,14 @@ def club_details_view(club_id: int):
         _error_box(msg)
         return
 
-    club_id, name, city, description, members_count = club
+    club_id, name, city, description, members_count, club_lat, club_lon = club
 
-    # ===== POGODA =====
+    # ===== POGODA (współrzędne klubu lub geokodowanie miasta) =====
     try:
-        weather = get_weather(city)
+        if club_lat is not None and club_lon is not None:
+            weather = get_weather_by_coords(club_lat, club_lon, lang)
+        else:
+            weather = get_weather(city)
     except Exception:
         weather = None
 
