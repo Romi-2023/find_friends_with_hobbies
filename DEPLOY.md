@@ -60,10 +60,27 @@ W ustawieniach komponentu **Web Service** (Twoja aplikacja) dodaj zmienne:
 
 - `DB_SCHEMA=find_friends` (lub inna nazwa; tylko litery, cyfry, podkreślenie)
 
-## Krok 4: Migracje bazy
+## Krok 4: Migracje bazy – utworzenie tabel (users, clubs, itd.)
 
-Schemat i migracje (np. `initialize_db()`) uruchamiane są przy starcie aplikacji przy pierwszym połączeniu z bazą (jeśli tak jest w kodzie).  
-Jeśli Twoja baza jest już używana przez inną apkę, **nie** twórz tabel od zera – upewnij się, że:
+Aby **dane w aplikacji były trwałe** (logowanie, kluby, wiadomości – bez utraty po wylogowaniu), w bazie muszą istnieć wszystkie tabele. Możesz je utworzyć na dwa sposoby:
+
+### A) Skrypt jednorazowy (zalecane przy pustej bazie)
+
+W katalogu projektu, z ustawionym **`DATABASE_URL`** (np. w `.env` lub w środowisku):
+
+```bash
+python scripts/init_production_db.py
+```
+
+Skrypt tworzy schemat (jeśli ustawiony `DB_SCHEMA`) oraz wszystkie tabele: `users`, `clubs`, `members`, `follows`, `club_events`, `reports`, itd. Po uruchomieniu możesz odpalić aplikację – dane będą zapisywane w bazie 24/7.
+
+W **DigitalOcean**: w **Console** (Settings → Console lub SSH do kontenera) ustaw `DATABASE_URL` i uruchom ten skrypt, albo uruchom go lokalnie z `.env` zawierającym `DATABASE_URL` z DO.
+
+### B) Automatycznie przy starcie aplikacji
+
+Schemat i migracje (`initialize_db()`) uruchamiane są przy pierwszym wejściu na stronę. Jeśli z jakiegoś powodu tabele nie powstają (np. błąd połączenia przy pierwszym ładowaniu), użyj skryptu z punktu A.
+
+Jeśli Twoja baza jest już używana przez inną apkę, **nie** twórz tabel od zera w tym samym schemacie – upewnij się, że:
 
 - Tabele aplikacji Find Friends (np. `users`, `clubs`, `members`, `reports`, itd.) **istnieją** w tej samej bazie (w osobnym schemacie lub z prefiksem, jeśli tak ma być),
 - **albo** uruchomisz migracje tylko raz (np. przez skrypt lub pierwsze uruchomienie z pustą bazą dla tej aplikacji).

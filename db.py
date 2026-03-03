@@ -703,6 +703,60 @@ CREATE INDEX IF NOT EXISTS idx_email_verifications_token ON email_verifications(
 """
 
 
+def run_postgres_schema(conn):
+    """
+    Wykonuje pełny schemat PostgreSQL + migracje na przekazanym połączeniu.
+    Używane przez initialize_db() oraz przez skrypt scripts/init_production_db.py.
+    """
+    with conn:
+        cur = conn.cursor()
+        cur.execute(INIT_SQL)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en';")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer TEXT REFERENCES users(username);")
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
+        """)
+        cur.execute("""
+            ALTER TABLE clubs ADD COLUMN IF NOT EXISTS owner_username TEXT REFERENCES users(username) ON DELETE SET NULL;
+        """)
+        cur.execute("""
+            ALTER TABLE clubs ADD COLUMN IF NOT EXISTS deputy_username TEXT REFERENCES users(username) ON DELETE SET NULL;
+        """)
+        cur.execute("""
+            ALTER TABLE clubs ADD COLUMN IF NOT EXISTS privacy_level TEXT NOT NULL DEFAULT 'public';
+        """)
+        cur.execute("""
+            ALTER TABLE clubs ADD COLUMN IF NOT EXISTS is_hidden INTEGER DEFAULT 0;
+        """)
+        cur.execute("""
+            ALTER TABLE members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member';
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS club_join_requests (
+                id SERIAL PRIMARY KEY,
+                club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+                username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(club_id, username)
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS club_partnerships (
+                id SERIAL PRIMARY KEY,
+                club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+                partner_club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined')),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(club_id, partner_club_id)
+            );
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_club_partnerships_partner ON club_partnerships(partner_club_id);")
+
+
 def initialize_db() -> bool:
     """Wykonuje schemat (PostgreSQL lub SQLite) i migracje. Zwraca True przy sukcesie."""
     conn = db_conn()
@@ -727,52 +781,7 @@ def initialize_db() -> bool:
             cur.close()
             return True
         else:
-            with conn:
-                cur = conn.cursor()
-                cur.execute(INIT_SQL)
-                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;")
-                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;")
-                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en';")
-                cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ;")
-                cur.execute("""
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
-                """)
-                cur.execute("""
-                    ALTER TABLE clubs ADD COLUMN IF NOT EXISTS owner_username TEXT REFERENCES users(username) ON DELETE SET NULL;
-                """)
-                cur.execute("""
-                    ALTER TABLE clubs ADD COLUMN IF NOT EXISTS deputy_username TEXT REFERENCES users(username) ON DELETE SET NULL;
-                """)
-                cur.execute("""
-                    ALTER TABLE clubs ADD COLUMN IF NOT EXISTS privacy_level TEXT NOT NULL DEFAULT 'public';
-                """)
-                cur.execute("""
-                    ALTER TABLE clubs ADD COLUMN IF NOT EXISTS is_hidden INTEGER DEFAULT 0;
-                """)
-                cur.execute("""
-                    ALTER TABLE members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'member';
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS club_join_requests (
-                        id SERIAL PRIMARY KEY,
-                        club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-                        username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
-                        status TEXT NOT NULL DEFAULT 'pending',
-                        created_at TIMESTAMPTZ DEFAULT NOW(),
-                        UNIQUE(club_id, username)
-                    );
-                """)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS club_partnerships (
-                        id SERIAL PRIMARY KEY,
-                        club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-                        partner_club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
-                        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined')),
-                        created_at TIMESTAMPTZ DEFAULT NOW(),
-                        UNIQUE(club_id, partner_club_id)
-                    );
-                """)
-                cur.execute("CREATE INDEX IF NOT EXISTS idx_club_partnerships_partner ON club_partnerships(partner_club_id);")
+            run_postgres_schema(conn)
             return True
     except Exception as e:
         logger.error("Schema init error: %s", e)
