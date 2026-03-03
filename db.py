@@ -94,6 +94,7 @@ def _sqlite_connect():
 
 # ---------------------------------------------------------------------------
 # PostgreSQL (oryginalna logika + osobny schemat przy współdzielonej bazie)
+# Przy współdzielonym klastrze aplikacja jest nieinwazyjna: swoje tabele w DB_SCHEMA.
 # ---------------------------------------------------------------------------
 
 def _pg_schema_name() -> str:
@@ -108,19 +109,28 @@ def _pg_schema_name() -> str:
 
 
 def _pg_set_schema(conn):
-    """Dla PostgreSQL: tworzy schemat jeśli DB_SCHEMA ustawiony i ustawia search_path."""
+    """
+    Dla PostgreSQL: jeśli DB_SCHEMA ustawiony – tworzy schemat (jeśli może) i ustawia search_path.
+    Gdy użytkownik bazy nie ma praw CREATE SCHEMA (np. współdzielona baza DO), nie przerywamy:
+    ustawiamy search_path na public, żeby aplikacja działała jak wcześniej.
+    """
     schema = _pg_schema_name()
     if not schema:
         return
+    cur = conn.cursor()
     try:
-        cur = conn.cursor()
         cur.execute("CREATE SCHEMA IF NOT EXISTS %s" % schema)
         cur.execute("SET search_path TO %s" % schema)
-        cur.close()
         conn.commit()
     except Exception as e:
-        logger.error("Failed to set DB schema %r: %s", schema, e)
-        raise
+        logger.warning("DB schema %r: %s – używam public", schema, e)
+        try:
+            cur.execute("SET search_path TO public")
+            conn.commit()
+        except Exception:
+            pass
+    finally:
+        cur.close()
 
 
 def _pg_connection():

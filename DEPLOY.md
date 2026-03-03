@@ -68,13 +68,15 @@ Jeśli Twoja baza jest już używana przez inną apkę, **nie** twórz tabel od 
 - Tabele aplikacji Find Friends (np. `users`, `clubs`, `members`, `reports`, itd.) **istnieją** w tej samej bazie (w osobnym schemacie lub z prefiksem, jeśli tak ma być),
 - **albo** uruchomisz migracje tylko raz (np. przez skrypt lub pierwsze uruchomienie z pustą bazą dla tej aplikacji).
 
-**Współdzielona baza – bez konfliktów:**  
+**Współdzielona baza – nieinwazyjność:**  
+Ta aplikacja jest zaprojektowana tak, aby **bezpiecznie dzielić jeden klaster bazy** z inną aplikacją i być dla niej **nieinwazyjna**: nie modyfikuje ani nie czyta tabel drugiej apki, a swoje dane trzyma w osobnym schemacie (gdy jest ustawiony `DB_SCHEMA`).
+
 Ustaw zmienną **`DB_SCHEMA`** (np. `find_friends`). Aplikacja wtedy:
-- tworzy schemat `find_friends` w bazie (jeśli nie istnieje),
+- tworzy schemat `find_friends` w bazie (jeśli ma uprawnienia; jeśli nie – działa dalej na `public`),
 - ustawia `search_path` na ten schemat przy każdym połączeniu,
 - wszystkie tabele (users, clubs, members, follows, club_events itd.) powstają w `find_friends`.
 
-Druga aplikacja może korzystać z schematu `public` (domyślny). Obie apki działają na jednej bazie bez wspólnych tabel.
+Druga aplikacja korzysta z schematu `public` (domyślny). Obie apki działają na jednej bazie, bez wspólnych tabel i bez ingerencji w dane drugiej.
 
 ## Krok 5: Deploy i weryfikacja
 
