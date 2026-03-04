@@ -22,10 +22,10 @@ Używasz **tej samej bazy** co inna apka:
 
 Alternatywnie możesz ustawić osobno: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (bez `USE_SQLITE`).
 
-**Ważne:** Na wdrożeniu aplikacja musi korzystać z **PostgreSQL**, nie SQLite. Ustaw w App Platform:
+**Ważne – trwałość danych:** Na wdrożeniu aplikacja musi korzystać z **PostgreSQL**. Wtedy wszystkie dane (konta, kluby, wiadomości, znajomi) są trwale zapisane w bazie i **nie znikają** po restarcie ani po zamknięciu przeglądarki. W App Platform ustaw:
 
-- **`USE_SQLITE=0`**  
-  **albo** po prostu **nie ustawiaj** `USE_SQLITE` i ustaw tylko **`DATABASE_URL`** – wtedy `config`/`db.py` używają Postgresa.
+- **`DATABASE_URL`** = connection string do PostgreSQL (wystarczy to, aby domyślnie użyć Postgresa),
+- ewentualnie **`USE_SQLITE=0`** – jeśli nie ustawisz, przy ustawionym `DATABASE_URL` i tak używany jest PostgreSQL.
 
 ## Krok 2: Utworzenie aplikacji na App Platform
 
@@ -108,7 +108,7 @@ Druga aplikacja korzysta z schematu `public` (domyślny). Obie apki działają n
 ## Uwagi
 
 - **Pliki multimedialne (upload):** Domyślnie zapis są w katalogu `media/` w kontenerze. Na App Platform dysk jest nietrwały – po redeploy pliki znikną. Trwałe przechowywanie: **Spaces (S3)** i zmiana ścieżki uploadu w aplikacji (np. `MEDIA_DIR` lub integracja z S3).
-- **Sesja Streamlit:** Domyślnie stan jest w pamięci. Przy wielu instancjach warto rozważyć zewnętrzne przechowywanie sesji (np. Redis) – na start jedna instancja wystarczy.
+- **Sesja Streamlit:** Stan logowania (`logged_in`, `username`) jest w pamięci – po zamknięciu przeglądarki użytkownik musi zalogować się ponownie. **Dane konta** (profil, kluby, wiadomości, znajomi) są w PostgreSQL i pozostają na stałe. Przy wielu instancjach warto rozważyć zewnętrzne przechowywanie sesji (np. Redis) – na start jedna instancja wystarczy.
 - **HTTPS:** App Platform domyślnie wystawia HTTPS; `APP_PUBLIC_URL` powinien być z `https://`.
 
 ## Podsumowanie

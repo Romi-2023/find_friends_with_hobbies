@@ -2420,6 +2420,20 @@ def update_last_activity():
         return
     # SQLite nie ma NOW() – używamy datetime('now')
     now_expr = "datetime('now')" if config.USE_SQLITE else "NOW()"
+
+
+def _sql_is_online_expr(alias: str = "u"):
+    """Wyrażenie SQL: czy użytkownik 'online' (aktywny w ostatnich 5 min). Działa w SQLite i PostgreSQL."""
+    if config.USE_SQLITE:
+        return f"(CASE WHEN (julianday('now') - julianday(coalesce({alias}.last_activity, '1970-01-01'))) * 24 * 60 < 5 THEN 1 ELSE 0 END)"
+    return f"(NOW() - {alias}.last_activity < INTERVAL '5 minutes')"
+
+
+def _sql_order_by_activity(alias: str = "u"):
+    """Fragment ORDER BY: aktywność DESC, null na końcu. Działa w SQLite i PostgreSQL."""
+    if config.USE_SQLITE:
+        return f"{alias}.last_activity DESC, {alias}.username"
+    return f"{alias}.last_activity DESC NULLS LAST, {alias}.username"
     try:
         with conn:
             cur = conn.cursor()
@@ -6932,16 +6946,28 @@ def admin_panel():
                     total_messages = None
 
                 # aktywni użytkownicy (na podstawie last_activity)
-                cur.execute(
-                    """
-                    SELECT
-                        COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '1 day')  AS day,
-                        COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '7 days')  AS week,
-                        COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '30 days') AS month,
-                        COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '365 days') AS year
-                    FROM users
-                    """
-                )
+                if config.USE_SQLITE:
+                    cur.execute(
+                        """
+                        SELECT
+                            COUNT(CASE WHEN last_activity >= datetime('now', '-1 day') THEN 1 END) AS day,
+                            COUNT(CASE WHEN last_activity >= datetime('now', '-7 days') THEN 1 END) AS week,
+                            COUNT(CASE WHEN last_activity >= datetime('now', '-30 days') THEN 1 END) AS month,
+                            COUNT(CASE WHEN last_activity >= datetime('now', '-365 days') THEN 1 END) AS year
+                        FROM users
+                        """
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT
+                            COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '1 day')  AS day,
+                            COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '7 days')  AS week,
+                            COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '30 days') AS month,
+                            COUNT(*) FILTER (WHERE last_activity >= NOW() - INTERVAL '365 days') AS year
+                        FROM users
+                        """
+                    )
                 active_day, active_week, active_month, active_year = cur.fetchone()
 
                 # TOP 5 miast
@@ -7521,12 +7547,14 @@ def search_by_hobby():
             return
         try:
             params = [hobby]
-            sql = """
+            is_online_sql = _sql_is_online_expr("users")
+            order_activity = _sql_order_by_activity("users")
+            sql = f"""
                 SELECT
                     users.username,
                     users.city,
                     users.last_activity,
-                    (NOW() - users.last_activity < INTERVAL '5 minutes') AS is_online
+                    {is_online_sql} AS is_online
                 FROM hobbies
                 INNER JOIN users ON hobbies.username = users.username
                 WHERE hobbies.hobby = %s
@@ -7539,11 +7567,11 @@ def search_by_hobby():
                 sql += " AND users.username <> %s"
                 params.append(username)
 
-            sql += """
+            sql += f"""
                 ORDER BY
                     (users.city = %s) DESC,
                     is_online DESC,
-                    users.last_activity DESC NULLS LAST
+                    {order_activity}
             """
 
             # miasto zalogowanego użytkownika (boost w sortowaniu)
@@ -7610,13 +7638,15 @@ def recommend_users():
 
             # Użytkownicy, których NIE obserwujesz i nie są Tobą
             # preferuj tych z tego samego miasta, online i bardziej aktywnych
+            is_online_sql = _sql_is_online_expr("u")
+            order_activity = _sql_order_by_activity("u")
             cur.execute(
-                """
+                f"""
                 SELECT
                     u.username,
                     u.city,
                     u.last_activity,
-                    (NOW() - u.last_activity < INTERVAL '5 minutes') AS is_online,
+                    {is_online_sql} AS is_online,
                     CASE WHEN u.city = %s AND %s IS NOT NULL THEN 1 ELSE 0 END AS same_city
                 FROM users u
                 WHERE u.username <> %s
@@ -7628,8 +7658,7 @@ def recommend_users():
                   )
                 ORDER BY same_city DESC,
                          is_online DESC,
-                         u.last_activity DESC NULLS LAST,
-                         u.username
+                         {order_activity}
                 LIMIT 50
                 """,
                 (user_city, user_city, username, username),
@@ -7822,18 +7851,19 @@ def friends_page():
             cur = conn.cursor()
 
             # osoby, które TY obserwujesz (following)
+            is_online_sql = _sql_is_online_expr("u")
+            order_activity = _sql_order_by_activity("u")
             cur.execute(
-                """
+                f"""
                 SELECT u.username,
                        u.city,
                        u.last_activity,
-                       (NOW() - u.last_activity < INTERVAL '5 minutes') AS is_online
+                       {is_online_sql} AS is_online
                 FROM follows f
                 JOIN users u ON u.username = f.following
                 WHERE f.follower = %s
                 ORDER BY is_online DESC,
-                         u.last_activity DESC NULLS LAST,
-                         u.username
+                         {order_activity}
                 """,
                 (username,),
             )
@@ -7841,17 +7871,16 @@ def friends_page():
 
             # osoby, które obserwują CIEBIE (followers)
             cur.execute(
-                """
+                f"""
                 SELECT u.username,
                        u.city,
                        u.last_activity,
-                       (NOW() - u.last_activity < INTERVAL '5 minutes') AS is_online
+                       {is_online_sql} AS is_online
                 FROM follows f
                 JOIN users u ON u.username = f.follower
                 WHERE f.following = %s
                 ORDER BY is_online DESC,
-                         u.last_activity DESC NULLS LAST,
-                         u.username
+                         {order_activity}
                 """,
                 (username,),
             )

@@ -67,9 +67,10 @@ DATABASE_URL = get_env("DATABASE_URL", None)
 DB_SCHEMA = (get_env("DB_SCHEMA", "") or "").strip()
 
 # Baza: PostgreSQL (produkcja) lub SQLite (lokalne testy)
-# Ustaw USE_SQLITE=1 aby zapisywać dane w pliku (data/app.db) bez instalacji Postgresa.
-# Na wdrożeniu: USE_SQLITE=0 i podaj DATABASE_URL z DO.
-USE_SQLITE = get_env("USE_SQLITE", "1").strip().lower() in ("1", "true", "yes")
+# Na wdrożeniu: ustaw DATABASE_URL (wtedy domyślnie używamy PostgreSQL).
+# Lokalnie bez DATABASE_URL: domyślnie SQLite (USE_SQLITE=1); ustaw USE_SQLITE=0 tylko gdy masz Postgresa.
+_use_sqlite_default = "0" if os.getenv("DATABASE_URL") else "1"
+USE_SQLITE = get_env("USE_SQLITE", _use_sqlite_default).strip().lower() in ("1", "true", "yes")
 SQLITE_PATH = get_env("SQLITE_PATH", "data/app.db")
 
 # Stary tryb „bez bazy” (demo) – wyłączony; do testów używaj SQLite (USE_SQLITE=1).
