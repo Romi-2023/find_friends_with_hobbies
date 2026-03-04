@@ -74,6 +74,8 @@ python scripts/init_production_db.py
 
 Skrypt tworzy schemat (jeśli ustawiony `DB_SCHEMA`) oraz wszystkie tabele: `users`, `clubs`, `members`, `follows`, `club_events`, `reports`, itd. Po uruchomieniu możesz odpalić aplikację – dane będą zapisywane w bazie 24/7.
 
+**Nazwy tabel (do testów / diagnostyki):** Aplikacja **nie** używa tabel `events`, `messages`, `friends`, `recommendations`. Używane są: **`club_events`** (Wydarzenia), **`follows`** (Znajomi / obserwowani), **`private_messages`** / **`forum_messages`** (wiadomości). Rekomendacje są liczone zapytaniami na `users` + `follows`, bez osobnej tabeli.
+
 W **DigitalOcean**: w **Console** (Settings → Console lub SSH do kontenera) ustaw `DATABASE_URL` i uruchom ten skrypt, albo uruchom go lokalnie z `.env` zawierającym `DATABASE_URL` z DO.
 
 ### B) Automatycznie przy starcie aplikacji

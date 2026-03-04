@@ -122,6 +122,15 @@ def _pg_set_schema(conn):
         cur.execute("CREATE SCHEMA IF NOT EXISTS %s" % schema)
         cur.execute("SET search_path TO %s" % schema)
         conn.commit()
+        # Jeśli w tym schemacie nie ma tabel (np. users), tabele są w public – przełącz na public
+        cur.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = %s AND table_name = 'users' LIMIT 1",
+            (schema,),
+        )
+        if cur.fetchone() is None:
+            logger.warning("DB schema %r jest pusty (brak tabel) – używam public", schema)
+            cur.execute("SET search_path TO public")
+            conn.commit()
     except Exception as e:
         logger.warning("DB schema %r: %s – używam public", schema, e)
         try:
