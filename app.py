@@ -5229,6 +5229,11 @@ def show_start_screen():
             st.session_state["show_register"] = True
             st.rerun()
 
+    # ------ Gdy był błąd bazy: diagnostyka (także dla niezalogowanych) ------
+    if st.session_state.get("_db_error_shown") or st.session_state.get("_last_db_exception"):
+        with st.expander("🔧 Sprawdź, czego brakuje – diagnostyka bazy", expanded=True):
+            show_db_diagnostics()
+
     # ------ Jedna zwinięta sekcja: Jak to działa + Dlaczego warto (mniej scrolla) ------
     with st.expander(f"ℹ️ {t('start_more_about')}", expanded=False):
         st.markdown(f"**{t('start_how_it_works')}** — {t('landing_extra_header')}")
@@ -5546,6 +5551,7 @@ def login_user():
 
     except Exception as e:
         logger.error("Login error: %s", e)
+        st.session_state["_last_db_exception"] = str(e)
         _error_box(t("db_error"))
     finally:
         db_release(conn)
