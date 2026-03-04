@@ -2042,9 +2042,16 @@ def _is_db_missing_table_error(e: Exception) -> bool:
 
 def show_db_diagnostics():
     """Wyświetla wynik diagnostyki bazy (konfiguracja, połączenie, tabele)."""
-    d = _db.run_db_diagnostics()
     lang = st.session_state.get("language", "pl")
     pl = lang == "pl"
+    # Ostatni wyjątek z zapytania (np. Znajomi / Rekomendacje) – pomaga zdiagnozować, gdy połączenie OK
+    last_ex = st.session_state.pop("_last_db_exception", None)
+    if last_ex:
+        st.markdown("**" + ("Ostatni błąd zapytania" if pl else "Last query error") + "**")
+        st.code(last_ex, language=None)
+        st.caption("Ten błąd wystąpił przy ostatniej operacji (np. Znajomi / Rekomendacje)." if pl else "This error occurred during the last operation (e.g. Friends / Recommendations).")
+        st.markdown("---")
+    d = _db.run_db_diagnostics()
     st.markdown("**" + ("Konfiguracja" if pl else "Configuration") + "**")
     st.write(("SQLite" if pl else "SQLite") + ": " + ("tak" if d["use_sqlite"] else "nie"))
     st.write(("DATABASE_URL ustawiony" if pl else "DATABASE_URL set") + ": " + ("tak" if d["database_url_set"] else "nie"))
@@ -7802,6 +7809,7 @@ def recommend_users():
 
     except Exception as e:
         logger.error("User recommendations error: %s", e)
+        st.session_state["_last_db_exception"] = str(e)
         _error_box(t("db_error"))
         if _is_db_missing_table_error(e):
             _info_box(t("db_error_tables_hint"))
@@ -8012,6 +8020,7 @@ def friends_page():
 
     except Exception as e:
         logger.error("Friends page error: %s", e)
+        st.session_state["_last_db_exception"] = str(e)
         _error_box(t("db_error"))
         if _is_db_missing_table_error(e):
             _info_box(t("db_error_tables_hint"))
