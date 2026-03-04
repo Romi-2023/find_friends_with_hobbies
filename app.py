@@ -5231,8 +5231,8 @@ def show_start_screen():
             st.session_state["show_register"] = True
             st.rerun()
 
-    # ------ Gdy był błąd bazy: diagnostyka (także dla niezalogowanych) ------
-    if st.session_state.get("_db_error_shown") or st.session_state.get("_last_db_exception"):
+    # ------ Diagnostyka bazy tylko dla admina (zwykli użytkownicy widzą tylko „Błąd dostępu do bazy”) ------
+    if (st.session_state.get("_db_error_shown") or st.session_state.get("_last_db_exception")) and st.session_state.get("is_admin"):
         with st.expander("🔧 Sprawdź, czego brakuje – diagnostyka bazy", expanded=True):
             show_db_diagnostics()
 
@@ -5979,6 +5979,7 @@ def view_clubs():
             details_label = "🔍 " + t("details")
 
             with st.container():
+                # Nazwa klubu: większa czcionka i biały kolor dla dobrej czytelności na ciemnym tle
                 st.markdown(
                     f"""
                     <div style="
@@ -5990,9 +5991,9 @@ def view_clubs():
                         box-shadow:0 0 12px rgba(0,0,0,0.4);
                         color:#e8e8e8;
                     ">
-                        <h3 style="margin-bottom:6px; color:#f5f5f5;">🏷️ {name}</h3>
+                        <div style="margin-bottom:6px; font-size:1.35rem; font-weight:700; color:#ffffff;">🏷️ {html.escape(str(name))}</div>
                         <p style="opacity:0.95; color:#e0e0e0;">📍 {city} | 👥 {members_count} {people_word}</p>
-                        <p style="margin-top:10px; color:#e0e0e0;">{(desc or '')[:120]}.</p>
+                        <p style="margin-top:10px; color:#e0e0e0;">{html.escape((desc or '')[:120])}.</p>
                         <p style="margin-top:8px; color:#e0e0e0;"><b>Status:</b> {status_badge}</p>
                     </div>
                     """,
@@ -8555,8 +8556,8 @@ menu = st.sidebar.radio(
 if override and override in menu_keys:
     menu = override
 
-# --- Jedna diagnostyka bazy gdy był błąd połączenia (zamiast wielu powtórzeń „Błąd dostępu do bazy") ---
-if st.session_state.get("_db_error_shown"):
+# --- Diagnostyka bazy tylko dla admina (w tle – zwykli użytkownicy jej nie widzą) ---
+if st.session_state.get("_db_error_shown") and st.session_state.get("is_admin"):
     with st.expander("🔧 Sprawdź, czego brakuje – diagnostyka bazy", expanded=True):
         show_db_diagnostics()
 
