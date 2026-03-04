@@ -53,6 +53,10 @@ class _SQLiteCursorWrapper:
         self._c.close()
 
     @property
+    def description(self):
+        return getattr(self._c, "description", None)
+
+    @property
     def connection(self):
         return self._c.connection
 
