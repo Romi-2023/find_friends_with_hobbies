@@ -207,6 +207,37 @@ class _SQLitePool:
 _last_db_error = None
 
 
+def _pg_validate_conn(conn):
+    """Sprawdza, czy połączenie PostgreSQL jest żywe (serwer często zamyka idle po ~10–30 s)."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        return True
+    except Exception:
+        return False
+
+
+def invalidate_pool():
+    """Czyści cache poolu – następne db_conn() utworzy nowy pool (świeże połączenia)."""
+    try:
+        get_pool.clear()
+    except Exception as e:
+        logger.warning("invalidate_pool: %s", e)
+
+
+def is_connection_error(exc: Exception) -> bool:
+    """Czy wyjątek wygląda na zerwane/nieaktualne połączenie (idle timeout, reset)."""
+    msg = (getattr(exc, "message", None) or str(exc) or "").lower()
+    return (
+        "connection" in msg and ("closed" in msg or "reset" in msg or "terminated" in msg)
+        or "server closed" in msg
+        or "could not receive data" in msg
+        or "connection already closed" in msg
+        or "ssl connection" in msg and "closed" in msg
+    )
+
+
 @st.cache_resource
 def get_pool():
     """Pool (PostgreSQL) lub pseudopool (SQLite). Gdy SKIP_DB i nie SQLite – None."""
@@ -225,21 +256,41 @@ def get_pool():
 
 
 def db_conn():
-    """Zwraca połączenie z poolu (lub None). Dla PostgreSQL z DB_SCHEMA ustawia search_path."""
+    """Zwraca połączenie z poolu (lub None). Dla PostgreSQL: walidacja żywotności + odświeżanie poolu przy starym połączeniu."""
     global _last_db_error
     pool = get_pool()
     if not pool:
         return None
-    try:
-        conn = pool.getconn()
-        if not getattr(config, "USE_SQLITE", False) and _pg_schema_name():
-            _pg_set_schema(conn)
-        _last_db_error = None
-        return conn
-    except Exception as e:
-        _last_db_error = str(e)
-        logger.error("DB connection error: %s", e)
-        return None
+    use_pg = not getattr(config, "USE_SQLITE", False)
+    for attempt in range(2):
+        try:
+            conn = pool.getconn()
+            if use_pg and not _pg_validate_conn(conn):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                invalidate_pool()
+                pool = get_pool()
+                if not pool:
+                    _last_db_error = "Pool odświeżony, brak nowego poolu."
+                    return None
+                continue
+            if use_pg and _pg_schema_name():
+                _pg_set_schema(conn)
+            _last_db_error = None
+            return conn
+        except Exception as e:
+            _last_db_error = str(e)
+            logger.error("DB connection error: %s", e)
+            if attempt == 0 and use_pg and is_connection_error(e):
+                invalidate_pool()
+                pool = get_pool()
+                if not pool:
+                    return None
+                continue
+            return None
+    return None
 
 
 def get_last_db_error():

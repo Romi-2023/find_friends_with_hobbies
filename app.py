@@ -2461,6 +2461,20 @@ def update_last_activity():
         return
     # SQLite nie ma NOW() – używamy datetime('now')
     now_expr = "datetime('now')" if config.USE_SQLITE else "NOW()"
+    try:
+        with conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"UPDATE users SET last_activity = {now_expr} WHERE username=%s",
+                (username,),
+            )
+        st.session_state["_last_activity_update"] = now
+    except Exception as e:
+        logger.error("update_last_activity error: %s", e)
+        if getattr(_db, "is_connection_error", lambda x: False)(e):
+            _db.invalidate_pool()
+    finally:
+        db_release(conn)
 
 
 def _sql_is_online_expr(alias: str = "u"):
@@ -2475,18 +2489,6 @@ def _sql_order_by_activity(alias: str = "u"):
     if config.USE_SQLITE:
         return f"{alias}.last_activity DESC, {alias}.username"
     return f"{alias}.last_activity DESC NULLS LAST, {alias}.username"
-    try:
-        with conn:
-            cur = conn.cursor()
-            cur.execute(
-                f"UPDATE users SET last_activity = {now_expr} WHERE username=%s",
-                (username,),
-            )
-        st.session_state["_last_activity_update"] = now
-    except Exception as e:
-        logger.error("update_last_activity error: %s", e)
-    finally:
-        db_release(conn)
 
 
 def is_blocked_between(user_a: str, user_b: str) -> bool:
@@ -5552,6 +5554,8 @@ def login_user():
     except Exception as e:
         logger.error("Login error: %s", e)
         st.session_state["_last_db_exception"] = str(e)
+        if getattr(_db, "is_connection_error", lambda x: False)(e):
+            _db.invalidate_pool()
         _error_box(t("db_error"))
     finally:
         db_release(conn)
@@ -7816,6 +7820,8 @@ def recommend_users():
     except Exception as e:
         logger.error("User recommendations error: %s", e)
         st.session_state["_last_db_exception"] = str(e)
+        if getattr(_db, "is_connection_error", lambda x: False)(e):
+            _db.invalidate_pool()
         _error_box(t("db_error"))
         if _is_db_missing_table_error(e):
             _info_box(t("db_error_tables_hint"))
@@ -8027,6 +8033,8 @@ def friends_page():
     except Exception as e:
         logger.error("Friends page error: %s", e)
         st.session_state["_last_db_exception"] = str(e)
+        if getattr(_db, "is_connection_error", lambda x: False)(e):
+            _db.invalidate_pool()
         _error_box(t("db_error"))
         if _is_db_missing_table_error(e):
             _info_box(t("db_error_tables_hint"))
