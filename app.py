@@ -2009,10 +2009,15 @@ def verify_email_view(token: str):
 # DB (PostgreSQL) – wrapper z obsługą błędów UI
 # =========================
 def db_conn():
-    """Pobiera połączenie z poolu; przy braku bazy zwraca None (w trybie demo bez spamu komunikatów)."""
+    """Pobiera połączenie z poolu; przy braku bazy zwraca None. Błąd pokazywany tylko raz + diagnostyka."""
     c = _db.db_conn()
     if c is None and is_db_configured():
-        _error_box(t("db_error"))
+        if not st.session_state.get("_db_error_shown"):
+            st.session_state["_db_error_shown"] = True
+            _error_box(t("db_error"))
+    else:
+        if c is not None:
+            st.session_state["_db_error_shown"] = False
     return c
 
 
@@ -2033,6 +2038,35 @@ def _is_db_missing_table_error(e: Exception) -> bool:
         or "undefined_table" in msg
         or "no such table" in msg
     )
+
+
+def show_db_diagnostics():
+    """Wyświetla wynik diagnostyki bazy (konfiguracja, połączenie, tabele)."""
+    d = _db.run_db_diagnostics()
+    lang = st.session_state.get("language", "pl")
+    pl = lang == "pl"
+    st.markdown("**" + ("Konfiguracja" if pl else "Configuration") + "**")
+    st.write(("SQLite" if pl else "SQLite") + ": " + ("tak" if d["use_sqlite"] else "nie"))
+    st.write(("DATABASE_URL ustawiony" if pl else "DATABASE_URL set") + ": " + ("tak" if d["database_url_set"] else "nie"))
+    st.write("DB_SCHEMA: " + str(d["db_schema"]))
+    st.markdown("---")
+    st.markdown("**" + ("Połączenie" if pl else "Connection") + "**")
+    if d["connection_ok"]:
+        st.success("OK" if pl else "OK")
+    else:
+        err = d["error_message"] or ("Nieznany błąd." if pl else "Unknown error.")
+        st.error(err)
+        if not d["database_url_set"] and not d["use_sqlite"]:
+            st.caption("Ustaw DATABASE_URL (PostgreSQL) lub USE_SQLITE=1 (SQLite)." if pl else "Set DATABASE_URL (PostgreSQL) or USE_SQLITE=1 (SQLite).")
+        if "connection refused" in (err or "").lower() or "could not connect" in (err or "").lower():
+            st.caption("Sprawdź host/port i czy baza działa. Na DO: Trusted Sources (IP aplikacji)." if pl else "Check host/port and that DB is running. On DO: Trusted Sources (app IP).")
+    st.markdown("---")
+    st.markdown("**" + ("Tabele" if pl else "Tables") + "**")
+    for tbl, exists in d["tables"].items():
+        st.write(("✅ " if exists else "❌ ") + tbl)
+    missing = [t for t, ok in d["tables"].items() if not ok]
+    if missing:
+        st.caption(("Uruchom: python scripts/init_production_db.py (z DATABASE_URL w .env)" if pl else "Run: python scripts/init_production_db.py (with DATABASE_URL in .env)") + " – " + (", ".join(missing)))
 
 
 # =========================
@@ -8497,6 +8531,11 @@ menu = st.sidebar.radio(
 
 if override and override in menu_keys:
     menu = override
+
+# --- Jedna diagnostyka bazy gdy był błąd połączenia (zamiast wielu powtórzeń „Błąd dostępu do bazy") ---
+if st.session_state.get("_db_error_shown"):
+    with st.expander("🔧 Sprawdź, czego brakuje – diagnostyka bazy", expanded=True):
+        show_db_diagnostics()
 
 # --- Podpowiedź o menu tylko w zakładce „Co w mieście”, raz – po „OK, rozumiem” już się nie pokazuje ---
 # Komunikat jako zwykły blok HTML (bez st.info), przycisk osobno – unikamy „przycisku w przycisku”

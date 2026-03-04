@@ -203,22 +203,30 @@ class _SQLitePool:
                 pass
 
 
+# Ostatni błąd połączenia (do diagnostyki w UI)
+_last_db_error = None
+
+
 @st.cache_resource
 def get_pool():
     """Pool (PostgreSQL) lub pseudopool (SQLite). Gdy SKIP_DB i nie SQLite – None."""
+    global _last_db_error
     if getattr(config, "USE_SQLITE", False):
         return _SQLitePool()
     if getattr(config, "SKIP_DB", False):
         return None
     try:
+        _last_db_error = None
         return _pg_pool()
     except Exception as e:
+        _last_db_error = str(e)
         logger.error("Postgres pool error: %s", e)
         return None
 
 
 def db_conn():
     """Zwraca połączenie z poolu (lub None). Dla PostgreSQL z DB_SCHEMA ustawia search_path."""
+    global _last_db_error
     pool = get_pool()
     if not pool:
         return None
@@ -226,10 +234,81 @@ def db_conn():
         conn = pool.getconn()
         if not getattr(config, "USE_SQLITE", False) and _pg_schema_name():
             _pg_set_schema(conn)
+        _last_db_error = None
         return conn
     except Exception as e:
+        _last_db_error = str(e)
         logger.error("DB connection error: %s", e)
         return None
+
+
+def get_last_db_error():
+    """Ostatni komunikat błędu bazy (do diagnostyki)."""
+    return _last_db_error
+
+
+# Lista tabel wymaganych przez aplikację (do diagnostyki)
+REQUIRED_TABLES = [
+    "users", "hobbies", "clubs", "members", "follows", "club_events",
+    "private_messages", "notifications", "reports", "blocks",
+]
+
+
+def run_db_diagnostics():
+    """
+    Sprawdza konfigurację i dostęp do bazy. Zwraca dict:
+    use_sqlite, database_url_set, db_schema, connection_ok, error_message, tables {name: bool}
+    """
+    import config as cfg
+    out = {
+        "use_sqlite": getattr(cfg, "USE_SQLITE", True),
+        "database_url_set": bool(getattr(cfg, "DATABASE_URL", None)),
+        "db_schema": (getattr(cfg, "DB_SCHEMA", None) or "") or "(public)",
+        "connection_ok": False,
+        "error_message": get_last_db_error(),
+        "tables": {},
+    }
+    if getattr(cfg, "SKIP_DB", False) and not getattr(cfg, "USE_SQLITE", False):
+        out["error_message"] = "SKIP_DB=1 i nie SQLite – baza wyłączona."
+        return out
+
+    conn = None
+    try:
+        conn = get_connection()
+        if not conn:
+            out["error_message"] = out["error_message"] or "get_connection() zwróciło None."
+            return out
+        out["connection_ok"] = True
+        out["error_message"] = None
+
+        cur = conn.cursor()
+        for table in REQUIRED_TABLES:
+            try:
+                if getattr(cfg, "USE_SQLITE", False):
+                    cur.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=%s",
+                        (table,),
+                    )
+                else:
+                    cur.execute(
+                        """SELECT 1 FROM information_schema.tables
+                           WHERE table_schema = current_schema() AND table_name = %s""",
+                        (table,),
+                    )
+                out["tables"][table] = cur.fetchone() is not None
+            except Exception:
+                out["tables"][table] = False
+        cur.close()
+    except Exception as e:
+        out["error_message"] = str(e)
+        out["connection_ok"] = False
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return out
 
 
 def db_release(conn):
