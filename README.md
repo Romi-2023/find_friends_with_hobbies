@@ -6,6 +6,12 @@ Aplikacja społecznościowa do znajdowania osób o podobnych zainteresowaniach: 
 - **Stack:** Python, Streamlit, PostgreSQL (lub SQLite), bcrypt, Folium
 - **Wdrożenie:** Dockerfile + [DEPLOY.md](DEPLOY.md) – DigitalOcean App Platform
 
+## Live demo
+- https://find-friend-with-hobby-app-9smie.ondigitalocean.app/
+
+## Portfolio page
+- https://romi-2023.github.io/knopp_roman_portfolio/ongoing/find_friends_with_hobbies/
+
 ## Licencja
 
 [Wszelkie prawa zastrzeżone](LICENSE) – kod jest własnością autora. Użycie, modyfikacja i rozpowszechnianie bez zezwolenia są zabronione.
